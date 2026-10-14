@@ -1,0 +1,34 @@
+# Version-1 forecast contract. Frozen fields are enforced by
+# nem_forecast.config.ForecastConfig; changing them requires an owner decision
+# recorded in docs/decisions.md and a code change, not just a YAML edit.
+contract_version: 1
+
+target:
+  region: VIC1
+  source_field: TOTALDEMAND
+  unit: MW
+  native_interval_minutes: 5          # expected; verify in Phase 1 audit
+  hourly_aggregation: time_weighted_mean_mw
+
+time:
+  # NEM market time: fixed UTC+10, no daylight saving (verify in Phase 1).
+  market_utc_offset_hours: 10
+  interval_label: start               # hourly bins labelled by their start
+  interval_closed: left               # [start, start + 1h)
+
+forecast:
+  origin_market_time: "00:00"
+  horizon_hours: 24
+  quantiles: [0.1, 0.5, 0.9]
+  primary_feature_set: demand_calendar
+  weather_in_primary_model: false
+
+history:
+  start_date: "2022-01-01"
+  # null = "latest complete market date", resolved and frozen in the data
+  # snapshot manifest at ingestion time (never at model time).
+  end_date: null
+
+quality:
+  min_hourly_interval_coverage: 1.0   # 12/12 five-minute intervals
+  exclude_incomplete_hours_from_model_data: true

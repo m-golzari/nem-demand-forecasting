@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=68,<81"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nem-forecast"
+version = "0.0.1"
+description = "Leakage-safe day-ahead probabilistic VIC1 demand forecasting portfolio data product."
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+license = { text = "MIT" }
+# Phase 0 needs only config/CLI dependencies. Data/model dependencies
+# (pandas, pyarrow, duckdb, lightgbm, ...) are added in the phase that uses them.
+dependencies = [
+    "pydantic>=2.6,<3",
+    "PyYAML>=6.0,<7",
+    "typer>=0.12,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8,<9",
+    "pytest-cov>=5,<7",
+    "ruff>=0.6,<1",
+    "mypy>=1.10,<2",
+    "types-PyYAML>=6.0,<7",
+]
+
+[project.scripts]
+nem-forecast = "nem_forecast.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "N", "SIM", "PTH", "RUF", "DTZ"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers -m 'not network'"
+markers = [
+    "network: test requires internet access (deselected by default; run with -m network)",
+]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src"]
+plugins = ["pydantic.mypy"]

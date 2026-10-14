@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Secrets
+.env
+
+# Data and generated outputs (keep directory placeholders only)
+data/raw/*
+data/interim/*
+data/processed/*
+results/runs/*
+scratch/*
+!data/raw/.gitkeep
+!data/interim/.gitkeep
+!data/processed/.gitkeep
+!results/runs/.gitkeep
+!scratch/.gitkeep
+*.parquet
+*.duckdb
+*.duckdb.wal
+
+# Notebooks checkpoints
+.ipynb_checkpoints/
+
+# Logs
+*.log
+logs/
+
+# HPC / SLURM job scripts and outputs
+slurm-*.out
+*.sbatch
+
+# Databases and secrets
+*.db
+*.sqlite
+*.sqlite3
+*.pem
+*.key
+secrets/
+
+# Editor / OS / machine-specific
+.vscode/
+.idea/
+.DS_Store
+*.swp
