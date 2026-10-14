@@ -342,6 +342,20 @@ are present in every file. **Schema supported.**
   This is **not established** either way and is recorded as a limitation.
   D-07's 1 h buffer does not cover multi-hour rewrites.
 
+### 10.4a Phase 2 use of the selection rule
+
+The Phase 2 run `phase2_vic1_hourly_20261014_full` applied D-06 to all
+502,879 VIC1 records:
+- 495,905 ordinary records were retained;
+- 3,487 physical records were selected and 3,487 pricing records left
+  unselected;
+- 0 records were quarantined.
+
+All 41,616 canonical hours are complete. 297 hours contain an intervention
+interval, and 10 of them contain a non-zero physical − pricing difference
+(≤ 19.97 MW). An independent stdlib-csv + DuckDB re-derivation reproduced
+every count (`docs/phase_reports/phase_2.md`).
+
 ### 10.5 Open anomalies (reviewed by the owner with Phase 1B approval; none blocks Phase 2)
 
 1. **SA1 non-positive `TOTALDEMAND`** (1,201 records). Not VIC1; flagged only.

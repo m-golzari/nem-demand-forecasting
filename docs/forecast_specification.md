@@ -105,6 +105,31 @@ before any correction.
 - **Revisions:** upstream archives are a retrieval-time snapshot (§7). A
   changed upstream file is a new artefact, detected by hash.
 
+## 6a. Phase 2 implementation (`nem_forecast.target`)
+
+- **Target column:** `dispatch_totaldemand_hourly_mean_mw`. It is the hourly
+  mean of AEMO dispatch `TOTALDEMAND` estimates for VIC1, in MW, i.e. the
+  arithmetic mean of the 12 selected end-of-interval estimates for intervals
+  ending `H+00:05 … H+01:00`. Equal 5-minute durations make this the
+  duration-weighted mean.
+- **Complete hour:** all 12 expected endpoints are present exactly once after
+  primary-record selection, values are finite, the region is VIC1,
+  `DISPATCHINTERVAL` is consistent, and no record in the hour is quarantined.
+  Row count alone is insufficient.
+- **Incomplete or invalid hours** are kept in `canonical_hourly` with
+  `quality_reasons` and a null target. They are excluded from `model_ready`.
+  Nothing is interpolated, clipped, averaged over fewer records, or substituted
+  with a pricing-run record.
+- **No feature availability buffer** is applied when building targets. D-07
+  applies in Phase 3.
+- **Input pinning:** inputs come from the locked snapshot
+  (`configs/data_snapshots/<snapshot>.lock.json`). The run manifest records
+  the lock hash, input hashes, git commit and dirty flag, resolved
+  configuration, row counts, coverage, quality results and output hashes.
+- **Result (run `phase2_vic1_hourly_20261014_full`):** 41,616 of 41,616 hours
+  complete, from 2022-01-01 00:00 to 2026-09-30 23:00. Independently
+  reconciled.
+
 ## 7. History, cadence, folds, holdout
 
 - History: market dates 2022-01-01 to 2026-09-30, i.e. interval ends from

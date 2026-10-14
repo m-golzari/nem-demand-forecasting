@@ -48,6 +48,16 @@ owner may override), **Open** (needs a decision in the named phase).
 | D-07 | Primary operational features may use demand intervals ending ≤ origin − 1 h. This is a **modelling assumption**, not a measured publication delay. A zero-lag profile is kept as a labelled sensitivity (`configs/feature_availability.yaml`). `LASTCHANGED` is never treated as proof of availability | Owner decision; Phase 1 found latency not established | Archived availability evidence appears |
 | D-08 | Historical snapshot: 57 official monthly archives, 2022-01 to 2026-09, retrieved 2026-10-14 into git-ignored `data/raw`. It is a snapshot of historical records, not a reconstruction of originally published files. Download stops on filename ambiguity, a missing month, an invalid archive, a hash inconsistency or an unsupported schema | Owner authorisation | New snapshot requested |
 
+## Phase 2 decisions (2026-10-14)
+
+| ID | Decision | Rationale | Revisit if |
+|---|---|---|---|
+| D-09 | A public, path-neutral snapshot lock (`configs/data_snapshots/<snapshot>.lock.json`) pins every input archive. It records month, URL, filename, bytes, SHA-256, retrieval time, report version and archive member. Phase 2 refuses inputs that do not match it | Owner instruction; reproducibility without committing data | New snapshot |
+| D-10 | Hourly completeness = all 12 expected endpoints exactly once after D-06 selection + finite values + VIC1 + consistent `DISPATCHINTERVAL` + no quarantined record. Incomplete hours are kept with reason flags and a null target, and excluded from model-ready data | Owner specification; CLAUDE.md §9 | — |
+| D-11 | Outputs use annual partitions: `intervals` and `canonical_hourly` in `data/interim/aemo_vic1/<run_id>/`, `model_ready` in `data/processed/vic1_hourly_target/<run_id>/`, reports and manifest in `results/runs/<run_id>/`. All are git-ignored; run IDs are never reused | Avoids tiny files; CLAUDE.md §14, §17 | — |
+| D-12 | Phase 2 is validated by an independent path: a stdlib `csv` re-read of the raw archives plus DuckDB re-derivation of selection, hour mapping and means, compared with the outputs (tolerance 10⁻⁹ MW) | Guards against shared-code errors | — |
+| D-13 | `configs/forecast.yaml` history end is frozen at 2026-09-30, matching the snapshot | Owner freeze (Phase 1B) | — |
+
 ## Open
 
 | ID | Question | Phase |
