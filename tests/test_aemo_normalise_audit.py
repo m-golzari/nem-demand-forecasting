@@ -33,6 +33,7 @@ def test_vic1_filter_window_and_reconciliation() -> None:
         "rows_in_window_vic1": 288,
         "rows_written": 288,
         "rows_dropped_after_vic1_filter": 0,
+        "selection_status_counts": {"ordinary_single": 288},
     }
     assert frame["settlementdate_source"].iloc[0] == "2024/04/04 00:05:00"
     assert frame["settlementdate_source"].iloc[-1] == "2024/04/05 00:00:00"

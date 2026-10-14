@@ -1,6 +1,7 @@
 import datetime as dt
+import hashlib
 import json
-from pathlib import Path
+import stat
 
 import httpx
 import pytest
@@ -11,9 +12,11 @@ from nem_forecast.paths import ProjectPaths
 from tests.aemo_fixtures import (
     LISTING_HTML,
     LISTING_HTML_ARCHIVE_FORMAT,
+    dvd_name,
     full_day_rows,
+    listing_for,
     render,
-    write_zip,
+    zip_bytes,
 )
 from tests.conftest import REPO_ROOT
 
@@ -115,72 +118,142 @@ def _client(payload: bytes, headers: dict[str, str] | None = None) -> httpx.Clie
     return httpx.Client(transport=httpx.MockTransport(handler))
 
 
-def _planned(project: ProjectPaths) -> nemweb.PlannedFile:
+def _payload() -> bytes:
+    return zip_bytes(render(full_day_rows(dt.date(2024, 4, 4))))
+
+
+def _planned(project: ProjectPaths, size: int) -> nemweb.PlannedFile:
     cfg = load_aemo_source_config(paths=project)
+    html = listing_for(2024, 4, [(dvd_name(2024, 4), size)])
     return nemweb.plan_download(
-        cfg, project, dt.date(2024, 4, 4), dt.date(2024, 4, 11), lambda _: LISTING_HTML
+        cfg, project, dt.date(2024, 4, 4), dt.date(2024, 4, 11), lambda _: html
     )[0]
 
 
-def test_download_writes_hash_manifest_and_never_overwrites(
-    aemo_project: ProjectPaths, tmp_path: Path
-) -> None:
+WINDOW = (dt.date(2024, 4, 4), dt.date(2024, 4, 11))
+
+
+def test_download_writes_hash_manifest_and_never_overwrites(aemo_project: ProjectPaths) -> None:
     cfg = load_aemo_source_config(paths=aemo_project)
-    payload = write_zip(
-        tmp_path / "src.zip", render(full_day_rows(dt.date(2024, 4, 4)))
-    ).read_bytes()
-    planned = _planned(aemo_project)
-    window = (dt.date(2024, 4, 4), dt.date(2024, 4, 11))
-    result = nemweb.download_planned_file(planned, _client(payload), cfg, aemo_project, window)
+    payload = _payload()
+    planned = _planned(aemo_project, len(payload))
+    result = nemweb.download_planned_file(planned, _client(payload), cfg, aemo_project, WINDOW)
     assert result["status"] == "downloaded"
     assert planned.destination.read_bytes() == payload
-    manifest = json.loads(nemweb.manifest_path(planned.destination).read_text())
+    manifest_file = nemweb.manifest_path(planned.destination)
+    manifest = json.loads(manifest_file.read_text())
     assert manifest["bytes"] == len(payload)
-    assert len(manifest["sha256"]) == 64
+    assert manifest["sha256"] == hashlib.sha256(payload).hexdigest()
     assert manifest["source_url"] == planned.url
-    assert manifest["retrieval_completed_utc"].endswith("Z")
-    # second call: verified, not re-downloaded
-    again = nemweb.download_planned_file(planned, _client(b"different"), cfg, aemo_project, window)
+    assert manifest["report_version"] == "5"
+    assert manifest["path"].startswith("data/raw/")  # relative, no machine-specific path
+    assert not planned.destination.stat().st_mode & stat.S_IWUSR  # read-only
+    assert not manifest_file.stat().st_mode & stat.S_IWUSR
+    assert not list(planned.destination.parent.glob("*.partial"))
+    again = nemweb.download_planned_file(planned, _client(b"different"), cfg, aemo_project, WINDOW)
     assert again["status"] == "already_present_verified"
     assert planned.destination.read_bytes() == payload
     path, record = nemweb.find_raw_archive(aemo_project, cfg.table, 2024, 4)
     assert path == planned.destination and record["sha256"] == manifest["sha256"]
 
 
-def test_tampered_raw_file_detected(aemo_project: ProjectPaths, tmp_path: Path) -> None:
+def test_tampered_raw_file_detected(aemo_project: ProjectPaths) -> None:
     cfg = load_aemo_source_config(paths=aemo_project)
-    payload = write_zip(
-        tmp_path / "src.zip", render(full_day_rows(dt.date(2024, 4, 4)))
-    ).read_bytes()
-    planned = _planned(aemo_project)
-    window = (dt.date(2024, 4, 4), dt.date(2024, 4, 11))
-    nemweb.download_planned_file(planned, _client(payload), cfg, aemo_project, window)
+    payload = _payload()
+    planned = _planned(aemo_project, len(payload))
+    nemweb.download_planned_file(planned, _client(payload), cfg, aemo_project, WINDOW)
+    planned.destination.chmod(0o644)
     planned.destination.write_bytes(payload + b"x")
-    with pytest.raises(nemweb.DownloadRefusedError, match="does not match"):
-        nemweb.download_planned_file(planned, _client(payload), cfg, aemo_project, window)
+    with pytest.raises(nemweb.ArchiveValidationError, match="hash inconsistency"):
+        nemweb.download_planned_file(planned, _client(payload), cfg, aemo_project, WINDOW)
     with pytest.raises(nemweb.SourceResolutionError):
         nemweb.find_raw_archive(aemo_project, cfg.table, 2024, 4)
 
 
-def test_existing_file_without_manifest_refused(aemo_project: ProjectPaths) -> None:
+def test_orphan_identical_to_fresh_download_is_recovered(aemo_project: ProjectPaths) -> None:
+    """Interruption after rename but before manifest: accept only if byte-identical."""
     cfg = load_aemo_source_config(paths=aemo_project)
-    planned = _planned(aemo_project)
+    payload = _payload()
+    planned = _planned(aemo_project, len(payload))
+    planned.destination.parent.mkdir(parents=True)
+    planned.destination.write_bytes(payload)
+    result = nemweb.download_planned_file(planned, _client(payload), cfg, aemo_project, WINDOW)
+    assert result["status"] == "recovered_verified"
+    assert json.loads(nemweb.manifest_path(planned.destination).read_text())[
+        "recovered_unmanifested_file"
+    ]
+
+
+def test_orphan_differing_from_fresh_download_stops(aemo_project: ProjectPaths) -> None:
+    cfg = load_aemo_source_config(paths=aemo_project)
+    payload = _payload()
+    planned = _planned(aemo_project, len(payload))
     planned.destination.parent.mkdir(parents=True)
     planned.destination.write_bytes(b"owner file")
-    with pytest.raises(nemweb.DownloadRefusedError, match="without a manifest"):
-        nemweb.download_planned_file(
-            planned, _client(b""), cfg, aemo_project, (dt.date(2024, 4, 4), dt.date(2024, 4, 11))
-        )
+    with pytest.raises(nemweb.ArchiveValidationError, match="hash inconsistency"):
+        nemweb.download_planned_file(planned, _client(payload), cfg, aemo_project, WINDOW)
     assert planned.destination.read_bytes() == b"owner file"
+    assert not nemweb.manifest_path(planned.destination).exists()
 
 
-def test_truncated_or_corrupt_download_rejected(aemo_project: ProjectPaths) -> None:
+def test_manifest_without_file_stops(aemo_project: ProjectPaths) -> None:
     cfg = load_aemo_source_config(paths=aemo_project)
-    planned = _planned(aemo_project)
-    window = (dt.date(2024, 4, 4), dt.date(2024, 4, 11))
-    with pytest.raises(Exception):  # noqa: B017 - zipfile raises BadZipFile
-        nemweb.download_planned_file(planned, _client(b"not a zip"), cfg, aemo_project, window)
+    payload = _payload()
+    planned = _planned(aemo_project, len(payload))
+    manifest = nemweb.manifest_path(planned.destination)
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text("{}")
+    with pytest.raises(nemweb.ArchiveValidationError, match="file is missing"):
+        nemweb.download_planned_file(planned, _client(payload), cfg, aemo_project, WINDOW)
+
+
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    [
+        (b"not a zip", "not a valid zip"),
+        (
+            zip_bytes(render(full_day_rows(dt.date(2024, 4, 4))).replace("REGIONSUM", "PRICE")),
+            "unsupported schema",
+        ),
+        (
+            zip_bytes(render(full_day_rows(dt.date(2024, 4, 4))).replace("TOTALDEMAND", "X")),
+            "missing columns",
+        ),
+    ],
+)
+def test_invalid_archive_or_schema_stops_and_leaves_nothing(
+    aemo_project: ProjectPaths, payload: bytes, message: str
+) -> None:
+    cfg = load_aemo_source_config(paths=aemo_project)
+    planned = _planned(aemo_project, len(payload))
+    with pytest.raises(nemweb.ArchiveValidationError, match=message):
+        nemweb.download_planned_file(planned, _client(payload), cfg, aemo_project, WINDOW)
     assert not planned.destination.exists()
+    assert not list(planned.destination.parent.glob("*.partial"))
+
+
+def test_listing_size_mismatch_stops(aemo_project: ProjectPaths) -> None:
+    cfg = load_aemo_source_config(paths=aemo_project)
+    payload = _payload()
+    planned = _planned(aemo_project, len(payload) + 1)
+    with pytest.raises(nemweb.ArchiveValidationError, match="listing says"):
+        nemweb.download_planned_file(planned, _client(payload), cfg, aemo_project, WINDOW)
+
+
+def test_download_retries_transient_server_error(aemo_project: ProjectPaths) -> None:
+    base = load_aemo_source_config(paths=aemo_project)
+    cfg = base.model_copy(update={"http": base.http.model_copy(update={"backoff_seconds": 0.0})})
+    payload = _payload()
+    planned = _planned(aemo_project, len(payload))
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        return httpx.Response(503) if len(calls) == 1 else httpx.Response(200, content=payload)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    result = nemweb.download_planned_file(planned, client, cfg, aemo_project, WINDOW)
+    assert result["status"] == "downloaded" and len(calls) == 2
 
 
 def test_fetch_retries_then_fails_on_server_error(aemo_project: ProjectPaths) -> None:

@@ -10,7 +10,7 @@ from nem_forecast.cli import app
 from nem_forecast.config import load_aemo_source_config
 from nem_forecast.ingestion import nemweb
 from nem_forecast.paths import ProjectPaths
-from tests.aemo_fixtures import LISTING_HTML, full_day_rows, render, write_zip
+from tests.aemo_fixtures import dvd_name, full_day_rows, listing_for, render, zip_bytes
 from tests.conftest import REPO_ROOT
 
 runner = CliRunner()
@@ -24,9 +24,10 @@ def _project_with_raw(tmp_project: ProjectPaths, tmp_path: Path) -> ProjectPaths
     rows = []
     for day in range(4, 11):
         rows += full_day_rows(dt.date(2024, 4, day))
-    payload = write_zip(tmp_path / "src.zip", render(rows)).read_bytes()
+    payload = zip_bytes(render(rows))
+    html = listing_for(2024, 4, [(dvd_name(2024, 4), len(payload))])
     planned = nemweb.plan_download(
-        cfg, tmp_project, dt.date(2024, 4, 4), dt.date(2024, 4, 11), lambda _: LISTING_HTML
+        cfg, tmp_project, dt.date(2024, 4, 4), dt.date(2024, 4, 11), lambda _: html
     )[0]
     client = httpx.Client(
         transport=httpx.MockTransport(lambda r: httpx.Response(200, content=payload))

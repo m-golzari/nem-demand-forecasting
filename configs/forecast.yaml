@@ -25,9 +25,8 @@ forecast:
 
 history:
   start_date: "2022-01-01"
-  # null = "latest complete market date", resolved and frozen in the data
-  # snapshot manifest at ingestion time (never at model time).
-  end_date: null
+  # Frozen by the owner on 2026-10-14 (Phase 1B snapshot end month 2026-09).
+  end_date: "2026-09-30"
 
 quality:
   min_hourly_interval_coverage: 1.0   # 12/12 five-minute intervals

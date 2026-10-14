@@ -1,0 +1,18 @@
+# Feature availability profiles (owner decision D-07, 2026-10-14).
+#
+# The 1-hour buffer is a conservative MODELLING ASSUMPTION. It is not a
+# measured AEMO publication delay: historical availability of dispatch data at
+# the forecast origin was not established in Phase 1, and LASTCHANGED is not
+# proof of public availability.
+#
+# A forecast at origin T may use demand intervals ending no later than
+# T - availability_lag_hours.
+primary_operational:
+  availability_lag_hours: 1
+  experiment_type: operational
+  label: "Primary operational feature set: 1 h conservative availability buffer (modelling assumption)"
+
+sensitivity_zero_lag:
+  availability_lag_hours: 0
+  experiment_type: sensitivity
+  label: "SENSITIVITY ONLY (development analysis): zero-lag availability, not an operational result"

@@ -52,9 +52,10 @@ select = ["E", "F", "W", "I", "B", "UP", "N", "SIM", "PTH", "RUF", "DTZ"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra --strict-markers -m 'not network'"
+addopts = "-ra --strict-markers -m 'not network and not integration'"
 markers = [
     "network: test requires internet access (deselected by default; run with -m network)",
+    "integration: test reads the local historical snapshot in data/raw (run with -m integration)",
 ]
 
 [tool.mypy]

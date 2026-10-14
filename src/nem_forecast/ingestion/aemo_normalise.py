@@ -9,8 +9,17 @@ Rules (docs/aemo_schema_audit.md):
 * only ``REGIONID == "VIC1"`` rows inside the window are written, and the
   filter is reconciled by count;
 * **no record is dropped, deduplicated, clipped or imputed**: intervention
-  pairs and anomalies are flagged. Duplicate resolution is an open owner
-  decision (docs/decisions.md O-03).
+  pairs and anomalies are flagged;
+* primary-target selection per (region, interval) follows owner decision
+  D-06 (docs/decisions.md). AEMO's Intervention Pricing Methodology v2.3
+  §3.3 says the base case target (physical/outturn) run is flagged
+  ``INTERVENTION=1`` and the pricing ("what-if") run ``INTERVENTION=0``:
+
+  - exactly one record with ``INTERVENTION=0`` -> ``ordinary_single`` (selected);
+  - exactly one ``INTERVENTION=1`` and one ``INTERVENTION=0`` record ->
+    physical row ``physical_selected`` (selected), pricing row
+    ``pricing_not_selected``; their ``TOTALDEMAND`` difference is recorded;
+  - anything else -> every row ``quarantined`` (never selected).
 """
 
 from __future__ import annotations
@@ -31,6 +40,12 @@ from nem_forecast.contract import (
 from nem_forecast.ingestion.aemo_csv import SOURCE_LINE, AemoTable
 
 REGION = "VIC1"
+ORDINARY = "ordinary_single"
+PHYSICAL = "physical_selected"
+PRICING = "pricing_not_selected"
+QUARANTINED = "quarantined"
+PHYSICAL_RUN = 1  # Intervention Pricing Methodology v2.3, section 3.3
+PRICING_RUN = 0
 PRIMARY_KEY = ["SETTLEMENTDATE", "RUNNO", "REGIONID", "DISPATCHINTERVAL", "INTERVENTION"]
 REQUIRED_COLUMNS = [*PRIMARY_KEY, "TOTALDEMAND", "LASTCHANGED"]
 TRADING_DAY_OFFSET = dt.timedelta(hours=4)
@@ -117,6 +132,52 @@ def add_quality_flags(frame: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def classify_primary_records(frame: pd.DataFrame) -> pd.DataFrame:
+    """Add D-06 selection columns per (``settlementdate_source``, ``region_id``) group.
+
+    Adds ``group_size``, ``selection_status``, ``is_primary_target_record`` and
+    ``physical_minus_pricing_mw`` (on both rows of a valid pair, else NaN).
+    Rows are never removed.
+    """
+    out = frame.copy()
+    key = ["settlementdate_source", "region_id"]
+    helper = pd.DataFrame(
+        {
+            "physical": (out["intervention"] == PHYSICAL_RUN).fillna(False).astype("int64"),
+            "pricing": (out["intervention"] == PRICING_RUN).fillna(False).astype("int64"),
+            "bad_runno": (out["runno"] != 1).fillna(True).astype("int64"),
+            "one": 1,
+        },
+        index=out.index,
+    )
+    sums = helper.groupby([out[k] for k in key], sort=False, dropna=False).transform("sum")
+    size, n_physical, n_pricing = sums["one"], sums["physical"], sums["pricing"]
+    runno_ok = sums["bad_runno"] == 0
+    single = (size == 1) & (n_pricing == 1) & runno_ok
+    pair = (size == 2) & (n_physical == 1) & (n_pricing == 1) & runno_ok
+    status = np.select(
+        [
+            single.to_numpy(dtype=bool),
+            (pair & (out["intervention"] == PHYSICAL_RUN).fillna(False)).to_numpy(dtype=bool),
+            pair.to_numpy(dtype=bool),
+        ],
+        [ORDINARY, PHYSICAL, PRICING],
+        default=QUARANTINED,
+    )
+    out["group_size"] = size.astype("int64")
+    out["selection_status"] = pd.Series(status, index=out.index, dtype="string")
+    out["is_primary_target_record"] = (
+        out["selection_status"].isin([ORDINARY, PHYSICAL]).astype(bool)
+    )
+    physical = out["total_demand_mw"].where(out["intervention"] == PHYSICAL_RUN)
+    pricing = out["total_demand_mw"].where(out["intervention"] == PRICING_RUN)
+    diff = physical.groupby([out[k] for k in key]).transform("max") - pricing.groupby(
+        [out[k] for k in key]
+    ).transform("max")
+    out["physical_minus_pricing_mw"] = diff.where(pair)
+    return out
+
+
 def normalise_vic1(
     table: AemoTable, source: SourceRef, start_date: dt.date, end_date: dt.date
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
@@ -128,7 +189,7 @@ def normalise_vic1(
     if selected.empty:
         raise ValueError(f"no {REGION} records in window {start_date}..{end_date}")
     assert (selected["region_id"] == REGION).all()
-    canonical = add_quality_flags(selected).reset_index(drop=True)
+    canonical = classify_primary_records(add_quality_flags(selected)).reset_index(drop=True)
     canonical.insert(0, "source_file", source.file)
     canonical.insert(1, "source_sha256", source.sha256)
     canonical.insert(2, "source_member", table.member)
@@ -143,5 +204,8 @@ def normalise_vic1(
         "rows_in_window_vic1": len(selected),
         "rows_written": len(canonical),
         "rows_dropped_after_vic1_filter": 0,
+        "selection_status_counts": {
+            str(k): int(v) for k, v in canonical["selection_status"].value_counts().items()
+        },
     }
     return canonical, reconciliation

@@ -22,7 +22,7 @@ owner may override), **Open** (needs a decision in the named phase).
 | A-01 | Hourly bins are left-closed `[start, start+1h)` and labelled by start. **Owner-approved 2026-10-14**: horizon 1 is `[00:00, 01:00)` market time, labelled 00:00; interval-ending source records keep their source timestamps and are mapped by represented interval into start-labelled windows. Change only if official source semantics contradict it. | Matches “origin + next 24 intervals”: h=1 begins at the origin; standard convention for pandas/DuckDB resampling | Owner prefers hour-ending labels (AEMO style) |
 | A-02 | Market timezone represented as a fixed offset (UTC+10), never `Australia/Melbourne` | CLAUDE.md §8; avoids DST errors | Phase 1 official documentation disagrees |
 | A-03 | Frozen contract fields are `Literal` types in code, not just YAML values | A YAML edit cannot silently change scope | Owner changes scope |
-| A-04 | `history.end_date: null` means “latest complete date”, resolved and frozen in the data snapshot manifest | “Latest complete date” moves over time and is not reproducible otherwise | — |
+| A-04 | ~~`history.end_date: null`~~ **Superseded 2026-10-14**: history end frozen by the owner at 2026-09-30 (snapshot end month 2026-09) | Reproducibility | — |
 | A-05 | An hour is complete only with 12/12 intervals (`min_hourly_interval_coverage: 1.0`) | Conservative default; configurable | Phase 2 audit shows systematic gaps |
 | A-06 | Project root resolved from an explicit argument, then `NEM_FORECAST_ROOT`, then package location; never the CWD | CLAUDE.md §17 | — |
 | A-07 | Phase 0 dependencies limited to pydantic, PyYAML, Typer (+ dev tools); `pydantic-settings` not used yet | Small dependency set (CLAUDE.md §18) | Settings needs grow |
@@ -38,15 +38,25 @@ owner may override), **Open** (needs a decision in the named phase).
 | D-04 | Canonical timestamps: `interval_end_market = SETTLEMENTDATE` + fixed UTC+10; start = end − 5 min; UTC by conversion; `hour_start` = floor(start, 1 h). Source strings are retained | Official interval-ending semantics + owner decision A-01 | Official semantics change |
 | D-05 | Downloads longer than 7 days are refused unless `--owner-approved-large-download` is passed | Enforces the multi-year owner gate in code | Owner approves Phase 2 history |
 
+## Phase 1B owner decisions (2026-10-14)
+
+| ID | Decision | Rationale / evidence | Revisit if |
+|---|---|---|---|
+| A-01 (wording) | Keep start labels. Document **explicit endpoint normalisation**: AEMO's source support `(00:00, 01:00]`, carried by interval-ending records 00:05…01:00, is represented canonically as `[00:00, 01:00)` labelled 00:00. All original timestamps are preserved. Boundary mapping is tested | Owner instruction | Official semantics contradict it |
+| D-01 (wording) | The target is described only as the “hourly mean of AEMO dispatch `TOTALDEMAND` estimates for VIC1”. It is never called measured consumption, metered load, total underlying demand, or observed average demand | Owner instruction; AEMO definition | — |
+| D-06 | Intervention selection per (region, interval). One ordinary record → retain. Exactly one physical (`INTERVENTION=1`) + one pricing (`INTERVENTION=0`) → select physical and record the difference. Any other combination → quarantine and stop for owner review. Never both rows, never an average. Both rows are preserved upstream | Owner decision. Flag values confirmed from AEMO *Intervention Pricing Methodology* v2.3 (effective 3 June 2024) §3.3: base case target run = `Intervention=1`, pricing run = `Intervention=0` | Documentation changes or unexpected patterns |
+| D-07 | Primary operational features may use demand intervals ending ≤ origin − 1 h. This is a **modelling assumption**, not a measured publication delay. A zero-lag profile is kept as a labelled sensitivity (`configs/feature_availability.yaml`). `LASTCHANGED` is never treated as proof of availability | Owner decision; Phase 1 found latency not established | Archived availability evidence appears |
+| D-08 | Historical snapshot: 57 official monthly archives, 2022-01 to 2026-09, retrieved 2026-10-14 into git-ignored `data/raw`. It is a snapshot of historical records, not a reconstruction of originally published files. Download stops on filename ambiguity, a missing month, an invalid archive, a hash inconsistency or an unsupported schema | Owner authorisation | New snapshot requested |
+
 ## Open
 
 | ID | Question | Phase |
 |---|---|---|
 | O-01 | ~~Verify NEM market time~~ **Resolved 2026-10-14 (Phase 1)**: AEMO Spot Market Operations Timetable v1.10 says time references are AEST; raw DST-date check shows fixed UTC+10 | — |
 | O-02 | ~~Source table, definition, interval semantics~~ **Resolved 2026-10-14 (Phase 1)**: `DISPATCHREGIONSUM`; `SETTLEMENTDATE` = interval end; `TOTALDEMAND` defined in D-01 (see `docs/aemo_schema_audit.md`) | — |
-| O-03 | **Owner review required.** Which row represents demand in intervention intervals (`INTERVENTION` 0 = pricing run, 1 = physical run)? Not stated for DISPATCHREGIONSUM; the April 2024 sample has no intervention rows. All rows are preserved and flagged until decided. `RUNNO` is always 1; no PK duplicates were observed | before Phase 2 |
+| O-03 | ~~Intervention rows~~ **Resolved 2026-10-14 by D-06** (physical run selected; others quarantined) | — |
 | O-04 | ~~Adapter~~ **Resolved 2026-10-14 (Phase 1)**: direct NEMWeb MMSDM monthly archives (daily archives only cover the last ~12 months); `nemosis` not used | — |
-| O-05 | Historical publication latency is **not established** (`LASTCHANGED` is not first publication; 7/2016 VIC1 records changed up to 25 min after interval end). Recommendation: 1 h feature availability lag in the primary model, with a 0-lag sensitivity run | 3 (owner decides) |
+| O-05 | ~~Availability lag~~ **Resolved 2026-10-14 by D-07** (1 h buffer as a modelling assumption; zero-lag sensitivity) | — |
 | O-06 | Calendar features: market time vs Victorian civil time (DST) for hour-of-day; holidays use civil dates | 3 |
 | O-07 | Primary point metric (MAE vs WAPE), folds, holdout, seeds in `configs/backtest.yaml` | 4 |
 | O-08 | How point baselines produce p10/p90 (e.g. fold-fitted empirical residual quantiles) | 4 |

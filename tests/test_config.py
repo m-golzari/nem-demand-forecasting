@@ -22,7 +22,7 @@ def test_repository_config_is_valid() -> None:
     assert cfg.forecast.weather_in_primary_model is False
     assert cfg.time.market_timezone.utcoffset(None) == dt.timedelta(hours=10)
     assert cfg.history.start_date == dt.date(2022, 1, 1)
-    assert cfg.history.end_date is None
+    assert cfg.history.end_date == dt.date(2026, 9, 30)
 
 
 @pytest.mark.parametrize(

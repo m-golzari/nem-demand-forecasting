@@ -19,3 +19,12 @@ http:
   max_attempts: 3
   backoff_seconds: 5
   user_agent: "nem-forecast/0.1 (+https://github.com/m-golzari/nem-demand-forecasting)"
+
+# Phase 1B historical snapshot (owner-approved 2026-10-14): 57 official monthly
+# archives, frozen end month 2026-09. This is a 2026 snapshot of historical
+# records, not a reconstruction of files as originally published.
+historical_snapshot:
+  start_month: "2022-01"
+  end_month: "2026-09"
+  batch_size: 6
+  pause_seconds_between_batches: 2

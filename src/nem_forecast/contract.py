@@ -7,9 +7,13 @@ time has no daylight saving, every origin has exactly 24 one-hour targets.
 
 Source semantics (verified in Phase 1, see docs/aemo_schema_audit.md): AEMO
 ``SETTLEMENTDATE`` is a naive NEM-market-time (AEST, UTC+10) timestamp marking
-the **end** of a 5-minute dispatch interval ``(end - 5 min, end]``. A record is
-assigned to the canonical hour containing its represented interval, so the 12
-records ending 00:05 ... 01:00 form the hour ``[00:00, 01:00)`` labelled 00:00.
+the **end** of a 5-minute dispatch interval ``(end - 5 min, end]``.
+
+Explicit endpoint normalisation: AEMO's source support for an hour is
+left-open/right-closed, ``(00:00, 01:00]``, carried by the 12 interval-ending
+records stamped 00:05 ... 01:00. The canonical representation of the same hour
+is half-open ``[00:00, 01:00)`` and labelled by its start, 00:00 (owner
+decision A-01). Original source timestamps are always preserved alongside.
 """
 
 from __future__ import annotations
@@ -79,3 +83,16 @@ def target_hours(market_date: dt.date, config: ForecastConfig) -> list[TargetHou
             )
         )
     return targets
+
+
+def latest_usable_interval_end(origin: dt.datetime, availability_lag_hours: int) -> dt.datetime:
+    """Latest source interval end a forecast at ``origin`` may use (D-07).
+
+    The primary operational profile uses a 1 h buffer (a modelling assumption,
+    not a measured publication delay).
+    """
+    if origin.tzinfo is None:
+        raise ValueError("origin must be timezone-aware")
+    if availability_lag_hours < 0:
+        raise ValueError("availability_lag_hours must be non-negative")
+    return origin - availability_lag_hours * _ONE_HOUR

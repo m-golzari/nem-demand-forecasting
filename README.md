@@ -5,12 +5,29 @@ next 24 hourly VIC1 demand values (hourly mean of AEMO `TOTALDEMAND`, MW) from
 a daily 00:00 NEM-market-time origin, with p10/p50/p90 outputs. It is not
 operated by AEMO or any retailer.
 
-**Status:** Phase 1 complete (seven-day AEMO reconnaissance; see
-`docs/aemo_schema_audit.md`). No multi-year data and no models yet. See
-`IMPLEMENTATION_PLAN.md` and `docs/phase_reports/`.
+**Status:** Phase 1B (historical snapshot ingestion and audit, 2022-01 to
+2026-09) awaiting owner review. No hourly aggregation, features or models yet.
+See `IMPLEMENTATION_PLAN.md` and `docs/phase_reports/`.
 
-The target is the hourly mean of AEMO dispatch `TOTALDEMAND`. That is NEMDE's
-end-of-interval forecast of scheduled demand, not metered consumption.
+## What the target is (and is not)
+
+The target is the **hourly mean of AEMO dispatch `TOTALDEMAND` estimates for
+VIC1**, in MW. It is **not** measured consumption, metered load, total
+underlying demand, or observed average demand.
+
+AEMO defines `TOTALDEMAND` as NEMDE's forecast of demand at the regional
+reference node met by scheduled and semi-scheduled generation, scheduled BDUs
+and interconnector imports. It is an estimate for the end of each 5-minute
+dispatch interval.
+
+It **excludes**:
+- non-scheduled generation and rooftop PV;
+- scheduled loads;
+- allocated interconnector losses.
+
+In intervention intervals, the physical (`INTERVENTION=1`) dispatch run record
+is used. Full definitions and sources are in `docs/forecast_specification.md`
+and `docs/aemo_schema_audit.md`.
 
 ## Setup (Python 3.11)
 
@@ -19,6 +36,11 @@ make install                 # creates .venv and installs -e ".[dev]"
 .venv/bin/nem-forecast validate-config
 .venv/bin/nem-forecast show-config
 make check                   # ruff + mypy + pytest + config CLI
+
+# Historical snapshot 2022-01..2026-09 (57 official archives, ~320 MB; owner-approved)
+.venv/bin/nem-forecast aemo-snapshot --dry-run --owner-approved-large-download
+.venv/bin/nem-forecast aemo-snapshot --owner-approved-large-download
+.venv/bin/nem-forecast aemo-historical-audit --snapshot <snapshot_id>
 
 # Seven-day AEMO sample (official NEMWeb MMSDM archive; ~4.6 MB)
 .venv/bin/nem-forecast aemo-download --dry-run   # report URLs, sizes, destinations

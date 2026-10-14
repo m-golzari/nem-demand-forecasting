@@ -15,6 +15,7 @@ described by a JSON manifest next to them.
 
 from __future__ import annotations
 
+import csv
 import datetime as dt
 import logging
 import re
@@ -31,7 +32,7 @@ import httpx
 from nem_forecast.config import AemoSourceConfig
 from nem_forecast.contract import DISPATCH_INTERVAL, settlementdate_bounds
 from nem_forecast.paths import ProjectPaths
-from nem_forecast.provenance import read_json, sha256_file, utc_now_iso, write_json_new
+from nem_forecast.provenance import read_json, sha256_file, utc_now_iso, write_json_atomic
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,10 @@ _LISTING_ROW = re.compile(
 
 class DownloadRefusedError(RuntimeError):
     """Raised when a download would violate an owner gate or overwrite raw data."""
+
+
+class ArchiveValidationError(RuntimeError):
+    """Raised for an invalid archive, unsupported schema or hash inconsistency."""
 
 
 class SourceResolutionError(RuntimeError):
@@ -233,60 +238,162 @@ def manifest_path(destination: Path) -> Path:
     return destination.parent / "manifests" / f"{destination.name}.manifest.json"
 
 
+REQUIRED_SOURCE_COLUMNS = (
+    "SETTLEMENTDATE",
+    "RUNNO",
+    "REGIONID",
+    "DISPATCHINTERVAL",
+    "INTERVENTION",
+    "TOTALDEMAND",
+    "LASTCHANGED",
+)
+_HEADER_LINES_TO_SCAN = 20
+
+
+def inspect_archive(path: Path, table: str) -> dict[str, Any]:
+    """Validate zip integrity and the AEMO header without loading the data rows.
+
+    Raises :class:`ArchiveValidationError` for a corrupt archive, an unexpected
+    member layout, or an unsupported schema (wrong report or missing columns).
+    """
+    report = {"DISPATCHREGIONSUM": ("DISPATCH", "REGIONSUM")}[table]
+    try:
+        with zipfile.ZipFile(path) as archive:
+            bad = archive.testzip()
+            infos = archive.infolist()
+            members = [i for i in infos if i.filename.upper().endswith(".CSV")]
+            if bad is not None or len(infos) != 1 or len(members) != 1:
+                raise ArchiveValidationError(
+                    f"{path.name}: expected one intact CSV member, got "
+                    f"{[i.filename for i in infos]} (bad member: {bad})"
+                )
+            with archive.open(members[0]) as raw:
+                lines = [raw.readline().decode("utf-8") for _ in range(_HEADER_LINES_TO_SCAN)]
+    except zipfile.BadZipFile as exc:
+        raise ArchiveValidationError(f"{path.name}: not a valid zip archive: {exc}") from exc
+    header = next((next(csv.reader([ln])) for ln in lines if ln.startswith("I,")), None)
+    if header is None or tuple(header[1:3]) != report:
+        raise ArchiveValidationError(
+            f"{path.name}: unsupported schema header {header[:4] if header else None}"
+        )
+    columns = header[4:]
+    missing = [c for c in REQUIRED_SOURCE_COLUMNS if c not in columns]
+    if missing:
+        raise ArchiveValidationError(f"{path.name}: unsupported schema, missing columns {missing}")
+    info = members[0]
+    return {
+        "zip_members": [
+            {
+                "name": info.filename,
+                "file_size": info.file_size,
+                "crc": f"{info.CRC:08x}",
+                "date_time": list(info.date_time),
+            }
+        ],
+        "report_version": header[3],
+        "columns": columns,
+    }
+
+
+def _stream_to_partial(
+    client: httpx.Client, planned: PlannedFile, cfg: AemoSourceConfig, partial: Path
+) -> tuple[dict[str, str | None], int, str, str]:
+    """Stream a file to ``partial`` with bounded retries (transport errors and 5xx)."""
+    last_error: Exception | None = None
+    for attempt in range(1, cfg.http.max_attempts + 1):
+        partial.unlink(missing_ok=True)
+        started = utc_now_iso()
+        try:
+            with client.stream("GET", planned.url) as response:
+                if response.status_code < 500:
+                    response.raise_for_status()
+                    with partial.open("xb") as handle:
+                        for chunk in response.iter_bytes():
+                            handle.write(chunk)
+                    headers = {
+                        k: response.headers.get(k)
+                        for k in ("content-length", "content-type", "last-modified", "etag", "date")
+                    }
+                    return headers, response.status_code, started, utc_now_iso()
+                last_error = httpx.HTTPStatusError(
+                    f"server error {response.status_code}",
+                    request=response.request,
+                    response=response,
+                )
+        except httpx.TransportError as exc:
+            last_error = exc
+        logger.warning(
+            "attempt %d/%d failed for %s: %s",
+            attempt,
+            cfg.http.max_attempts,
+            planned.url,
+            last_error,
+        )
+        if attempt < cfg.http.max_attempts:
+            time.sleep(cfg.http.backoff_seconds * attempt)
+    partial.unlink(missing_ok=True)
+    assert last_error is not None
+    raise last_error
+
+
+def verify_manifested_file(dest: Path, manifest: Path) -> dict[str, Any]:
+    recorded = read_json(manifest)
+    if dest.stat().st_size != recorded["bytes"] or sha256_file(dest) != recorded["sha256"]:
+        raise ArchiveValidationError(f"hash inconsistency: {dest} does not match its manifest")
+    return recorded
+
+
 def download_planned_file(
     planned: PlannedFile,
     client: httpx.Client,
     cfg: AemoSourceConfig,
     paths: ProjectPaths,
-    window: tuple[dt.date, dt.date],
+    window: tuple[dt.date, dt.date] | None = None,
+    snapshot_id: str | None = None,
 ) -> dict[str, Any]:
-    """Download one planned file unless an identical, manifested copy already exists."""
+    """Download one file with skip-if-valid and interruption-safe resume.
+
+    Order of operations: stream to ``.partial`` -> validate size, zip and
+    schema -> hash -> rename into place (read-only) -> write manifest
+    atomically. A file is only "valid" when its manifest exists and matches.
+    An orphan left by an interruption between rename and manifest is accepted
+    only if a fresh download is byte-identical; otherwise the run stops.
+    """
     dest, manifest = planned.destination, manifest_path(planned.destination)
-    if dest.exists():
-        if not manifest.exists():
-            raise DownloadRefusedError(f"{dest} exists without a manifest; refusing to touch it")
-        recorded = read_json(manifest)
-        actual = sha256_file(dest)
-        if actual != recorded["sha256"]:
-            raise DownloadRefusedError(f"{dest} hash {actual} does not match its manifest")
+    if dest.exists() and manifest.exists():
+        recorded = verify_manifested_file(dest, manifest)
         logger.info("already present and verified: %s", dest)
         return {**recorded, "status": "already_present_verified"}
+    if manifest.exists():
+        raise ArchiveValidationError(f"manifest exists but file is missing: {dest}")
 
     dest.parent.mkdir(parents=True, exist_ok=True)
     partial = dest.with_name(dest.name + ".partial")
-    if partial.exists():
-        partial.unlink()  # leftover from an interrupted attempt; never a raw artefact
-    requested_at = utc_now_iso()
-    with client.stream("GET", planned.url) as response:
-        response.raise_for_status()
-        with partial.open("xb") as handle:
-            for chunk in response.iter_bytes():
-                handle.write(chunk)
-        headers = {
-            k: response.headers.get(k)
-            for k in ("content-length", "content-type", "last-modified", "etag", "date")
-        }
-        status = response.status_code
-    completed_at = utc_now_iso()
+    headers, status, started, completed = _stream_to_partial(client, planned, cfg, partial)
     size = partial.stat().st_size
-    if headers["content-length"] is not None and int(headers["content-length"]) != size:
+    try:
+        if headers["content-length"] is not None and int(headers["content-length"]) != size:
+            raise ArchiveValidationError(f"truncated download for {planned.url}: {size} bytes")
+        if size != planned.listed_bytes:
+            raise ArchiveValidationError(
+                f"{planned.name}: {size} bytes downloaded but listing says {planned.listed_bytes}"
+            )
+        inspected = inspect_archive(partial, cfg.table)
+    except ArchiveValidationError:
+        partial.unlink(missing_ok=True)
+        raise
+    digest = sha256_file(partial)
+    recovered = dest.exists()
+    if recovered:
+        if sha256_file(dest) != digest:
+            partial.unlink()
+            raise ArchiveValidationError(
+                f"hash inconsistency: unmanifested {dest} differs from a fresh download"
+            )
         partial.unlink()
-        raise RuntimeError(f"truncated download for {planned.url}: {size} bytes")
-    with zipfile.ZipFile(partial) as archive:
-        bad = archive.testzip()
-        members = [
-            {
-                "name": i.filename,
-                "file_size": i.file_size,
-                "crc": f"{i.CRC:08x}",
-                "date_time": list(i.date_time),
-            }
-            for i in archive.infolist()
-        ]
-    if bad is not None:
-        partial.unlink()
-        raise RuntimeError(f"corrupt zip member {bad} in {planned.url}")
-    partial.rename(dest)
+    else:
+        partial.replace(dest)
+    dest.chmod(0o444)
     record = {
         "source_id": cfg.source_id,
         "table": cfg.table,
@@ -294,20 +401,25 @@ def download_planned_file(
         "listing_url": planned.listing_url,
         "listed_bytes": planned.listed_bytes,
         "listed_timestamp": planned.listed_timestamp,
-        "requested_window_market_dates_end_exclusive": [d.isoformat() for d in window],
+        "requested_window_market_dates_end_exclusive": (
+            [d.isoformat() for d in window] if window else None
+        ),
+        "snapshot_id": snapshot_id,
         "archive_month": f"{planned.year:04d}-{planned.month:02d}",
-        "retrieval_started_utc": requested_at,
-        "retrieval_completed_utc": completed_at,
+        "retrieval_started_utc": started,
+        "retrieval_completed_utc": completed,
         "http_status": status,
         "response_headers": headers,
         "bytes": size,
-        "sha256": sha256_file(dest),
+        "sha256": digest,
         "path": str(dest.relative_to(paths.root)),
-        "zip_members": members,
+        "recovered_unmanifested_file": recovered,
         "user_agent": cfg.http.user_agent,
+        **inspected,
     }
-    write_json_new(manifest, record)
-    return {**record, "status": "downloaded"}
+    write_json_atomic(manifest, record)
+    manifest.chmod(0o444)
+    return {**record, "status": "recovered_verified" if recovered else "downloaded"}
 
 
 def save_listing(paths: ProjectPaths, table: str, listing_url: str, html: str) -> dict[str, Any]:

@@ -19,12 +19,13 @@ from nem_forecast.config import (
     load_aemo_source_config,
     load_forecast_config,
 )
-from nem_forecast.ingestion import nemweb
+from nem_forecast.ingestion import nemweb, snapshot
 from nem_forecast.ingestion.aemo_csv import AemoTable, read_aemo_zip
 from nem_forecast.ingestion.aemo_normalise import SourceRef, normalise_vic1
 from nem_forecast.paths import ProjectPaths, ProjectRootError
-from nem_forecast.provenance import sha256_file, utc_now_iso
+from nem_forecast.provenance import sha256_file, utc_now_iso, write_json_atomic
 from nem_forecast.validation.aemo_audit import audit_dispatchregionsum
+from nem_forecast.validation.historical_audit import audit_snapshot
 
 app = typer.Typer(add_completion=False, no_args_is_help=True, help="NEM VIC1 demand forecasting.")
 
@@ -248,3 +249,100 @@ def aemo_normalise(
         f"raw rows {reconciliation['raw_data_rows']} | in window "
         f"{reconciliation['rows_in_window_all_regions']}"
     )
+
+
+# --- Phase 1B: historical snapshot ------------------------------------------
+
+
+@app.command("aemo-snapshot")
+def aemo_snapshot(
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", help="Resolve and save the plan only.")
+    ] = False,
+    owner_approved_large_download: Annotated[
+        bool, typer.Option("--owner-approved-large-download", help="Owner-gate override.")
+    ] = False,
+    root: RootOption = None,
+) -> None:
+    """Retrieve the configured historical snapshot (one official archive per month)."""
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    paths, cfg = _source(root)
+    months = cfg.historical_snapshot.months
+    first = dt.date(months[0][0], months[0][1], 1)
+    last_y, last_m = months[-1]
+    end = dt.date(last_y + (last_m == 12), last_m % 12 + 1, 1)
+    snap_id = snapshot.snapshot_id(cfg, dt.datetime.now(dt.UTC).strftime("%Y%m%d"))
+    try:
+        nemweb.check_window_allowed(cfg, first, end, owner_approved_large_download)
+        with nemweb.make_client(cfg) as client:
+            listings: dict[str, str] = {}
+
+            def get_listing(url: str) -> str:
+                listings[url] = nemweb.fetch_with_retries(client, url, cfg).text
+                return listings[url]
+
+            planned = snapshot.plan_snapshot(cfg, paths, get_listing)
+            plan = snapshot.plan_document(cfg, planned, paths.root, snap_id)
+            plan_file = snapshot.snapshots_dir(paths, cfg.table) / (
+                f"{snap_id}.plan.{utc_now_iso().replace(':', '')}.json"
+            )
+            write_json_atomic(plan_file, plan)
+            if dry_run:
+                typer.echo(
+                    f"DRY RUN: {plan['month_count']} months, "
+                    f"{plan['request_count']['data']} files, "
+                    f"{plan['estimated_download_bytes']} bytes; "
+                    f"already present {sum(f['already_present'] for f in plan['files'])}; "
+                    f"plan saved to {plan_file.relative_to(paths.root)}"
+                )
+                return
+            for url, html in listings.items():
+                nemweb.save_listing(paths, cfg.table, url, html)
+            document = snapshot.run_snapshot(planned, client, cfg, paths, snap_id)
+    except (
+        nemweb.DownloadRefusedError,
+        nemweb.SourceResolutionError,
+        nemweb.ArchiveValidationError,
+        FileExistsError,
+        httpx.HTTPError,
+    ) as exc:
+        raise _fail(exc) from exc
+    typer.echo(
+        f"OK: snapshot {snap_id} complete | files {document['file_count']} | "
+        f"bytes {document['total_bytes']} | status {document['retrieval_status_counts']}"
+    )
+
+
+@app.command("aemo-historical-audit")
+def aemo_historical_audit(
+    snapshot_name: Annotated[str, typer.Option("--snapshot", help="Complete snapshot ID.")],
+    force: ForceOption = False,
+    root: RootOption = None,
+) -> None:
+    """Audit a complete historical snapshot; write JSON report and intervention tables."""
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    paths, cfg = _source(root)
+    out = _interim_dir(paths) / "historical_audit" / snapshot_name
+    target = out / "historical_audit.json"
+    try:
+        _check_new(target, force)
+        document = snapshot.load_complete_snapshot(paths, cfg.table, snapshot_name)
+        report, interventions, quarantined = audit_snapshot(paths.root, document)
+    except (FileExistsError, nemweb.SourceResolutionError, ValueError) as exc:
+        raise _fail(exc) from exc
+    report["generated_utc"] = utc_now_iso()
+    report["package_version"] = __version__
+    out.mkdir(parents=True, exist_ok=True)
+    interventions.to_parquet(out / "intervention_rows.parquet", index=False)
+    quarantined.to_parquet(out / "quarantined_rows.parquet", index=False)
+    target.write_text(json.dumps(report, indent=2, default=str) + "\n", encoding="utf-8")
+    vic = report["intervention"]["by_region"].get("VIC1", {})
+    typer.echo(
+        f"OK: {report['file_count']} files, {report['rows_total']} rows | schema changes "
+        f"{len(report['schema_changes'])} | VIC1 intervention intervals "
+        f"{vic.get('intervention_intervals', 0)} | quarantined rows {report['quarantined_rows']} "
+        f"| report {target.relative_to(paths.root)}"
+    )
+    if report["quarantined_rows"]:
+        typer.echo("STOP: quarantined intervals require owner review", err=True)
+        raise typer.Exit(code=2)

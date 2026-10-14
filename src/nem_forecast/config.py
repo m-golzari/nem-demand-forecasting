@@ -143,6 +143,32 @@ class HttpConfig(_Frozen):
     user_agent: str = Field(min_length=1)
 
 
+_MONTH = r"^\d{4}-(0[1-9]|1[0-2])$"
+
+
+class HistoricalSnapshotConfig(_Frozen):
+    start_month: str = Field(pattern=_MONTH)
+    end_month: str = Field(pattern=_MONTH)
+    batch_size: int = Field(ge=1, le=60)
+    pause_seconds_between_batches: float = Field(ge=0)
+
+    @model_validator(mode="after")
+    def _check_order(self) -> HistoricalSnapshotConfig:
+        if self.end_month < self.start_month:
+            raise ValueError("end_month must not precede start_month")
+        return self
+
+    @property
+    def months(self) -> list[tuple[int, int]]:
+        year, month = (int(x) for x in self.start_month.split("-"))
+        end = tuple(int(x) for x in self.end_month.split("-"))
+        out = []
+        while (year, month) <= end:
+            out.append((year, month))
+            year, month = (year + 1, 1) if month == 12 else (year, month + 1)
+        return out
+
+
 class AemoSourceConfig(_Frozen):
     source_id: Literal["aemo_nemweb_mmsdm"]
     base_url: Literal["https://nemweb.com.au/Data_Archive/Wholesale_Electricity/MMSDM"]
@@ -150,6 +176,7 @@ class AemoSourceConfig(_Frozen):
     approved_window: ApprovedWindow
     max_window_days_without_owner_approval: int = Field(ge=1)
     http: HttpConfig
+    historical_snapshot: HistoricalSnapshotConfig
 
 
 def load_aemo_source_config(
@@ -167,3 +194,38 @@ def load_aemo_source_config(
         raise ConfigError(f"could not parse YAML in {config_path}: {exc}") from exc
     except ValidationError as exc:
         raise ConfigError(f"AEMO source config is invalid:\n{exc}") from exc
+
+
+class PrimaryAvailability(_Frozen):
+    availability_lag_hours: Literal[1]
+    experiment_type: Literal["operational"]
+    label: str = Field(min_length=1)
+
+
+class SensitivityAvailability(_Frozen):
+    availability_lag_hours: Literal[0]
+    experiment_type: Literal["sensitivity"]
+    label: str = Field(pattern=r"^SENSITIVITY ONLY")
+
+
+class FeatureAvailabilityConfig(_Frozen):
+    """Owner decision D-07: primary 1 h buffer; zero-lag kept only as labelled sensitivity."""
+
+    primary_operational: PrimaryAvailability
+    sensitivity_zero_lag: SensitivityAvailability
+
+
+def load_feature_availability_config(
+    path: str | Path | None = None, paths: ProjectPaths | None = None
+) -> FeatureAvailabilityConfig:
+    paths = paths or ProjectPaths.from_root()
+    config_path = paths.root / (path or "configs/feature_availability.yaml")
+    if not config_path.is_file():
+        raise ConfigError(f"feature availability config not found: {config_path}")
+    try:
+        data = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        return FeatureAvailabilityConfig.model_validate(data)
+    except yaml.YAMLError as exc:
+        raise ConfigError(f"could not parse YAML in {config_path}: {exc}") from exc
+    except ValidationError as exc:
+        raise ConfigError(f"feature availability config is invalid:\n{exc}") from exc
