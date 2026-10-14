@@ -1,0 +1,21 @@
+# AEMO NEMWeb MMSDM monthly archive adapter (Phase 1).
+# Official source: https://nemweb.com.au/Data_Archive/Wholesale_Electricity/MMSDM/
+source_id: aemo_nemweb_mmsdm
+base_url: https://nemweb.com.au/Data_Archive/Wholesale_Electricity/MMSDM
+table: DISPATCHREGIONSUM
+
+# Owner-approved reconnaissance window: market dates, end exclusive, i.e.
+# canonical intervals [2024-04-04 00:00, 2024-04-11 00:00) NEM market time.
+approved_window:
+  start_date: "2024-04-04"
+  end_date: "2024-04-11"
+
+# Guard for the multi-year owner gate: longer windows are refused unless the
+# caller passes an explicit owner-approval flag.
+max_window_days_without_owner_approval: 7
+
+http:
+  timeout_seconds: 120
+  max_attempts: 3
+  backoff_seconds: 5
+  user_agent: "nem-forecast/0.1 (+https://github.com/m-golzari/nem-demand-forecasting)"

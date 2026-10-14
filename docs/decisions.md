@@ -28,15 +28,25 @@ owner may override), **Open** (needs a decision in the named phase).
 | A-07 | Phase 0 dependencies limited to pydantic, PyYAML, Typer (+ dev tools); `pydantic-settings` not used yet | Small dependency set (CLAUDE.md §18) | Settings needs grow |
 | A-08 | “Day-ahead” is interpreted as “next 24 hours issued at market midnight” | The fixed origin and horizon define the product; avoids confusion with AEMO pre-dispatch | Owner wants an earlier (D-1) origin |
 
+## Phase 1 decisions (2026-10-14)
+
+| ID | Decision | Rationale | Revisit if |
+|---|---|---|---|
+| D-01 | Target stays `DISPATCHREGIONSUM.TOTALDEMAND` (MW), described as the **hourly mean of dispatch total demand**. Official definition: NEMDE's 50% POE forecast of scheduled demand at the regional reference node for the **end** of each 5-minute interval. Excludes non-scheduled generation and rooftop PV. Not metered average demand, and not AEMO “operational demand” | Owner-fixed target; the unit is confirmed as MW; the meaning is now documented rather than inferred from the name. **Discrepancy with the CLAUDE.md wording is recorded for owner awareness** | Owner prefers a measured target (e.g. operational demand) |
+| D-02 | The sample window is end-exclusive market dates [2024-04-04, 2024-04-11) = 2016 intervals. The download unit is the official monthly archive (April 2024, 4.57 MB, all regions), the smallest official unit covering 2024 | Daily NEMWeb archives no longer cover 2024; raw files must be kept unchanged | — |
+| D-03 | Raw archives are written once (`.partial` then rename), hashed, manifested, made read-only, and never overwritten. A changed upstream file is a new artefact for comparison | CLAUDE.md §7; upstream archives are re-issued (2024-08 to 2024-12 on 2026-05-19) | — |
+| D-04 | Canonical timestamps: `interval_end_market = SETTLEMENTDATE` + fixed UTC+10; start = end − 5 min; UTC by conversion; `hour_start` = floor(start, 1 h). Source strings are retained | Official interval-ending semantics + owner decision A-01 | Official semantics change |
+| D-05 | Downloads longer than 7 days are refused unless `--owner-approved-large-download` is passed | Enforces the multi-year owner gate in code | Owner approves Phase 2 history |
+
 ## Open
 
 | ID | Question | Phase |
 |---|---|---|
-| O-01 | Verify NEM market time = fixed UTC+10 from current AEMO documentation | 1 |
-| O-02 | Source table (`DISPATCHREGIONSUM` vs alternatives), official `TOTALDEMAND` definition, `SETTLEMENTDATE` interval-end semantics | 1 |
-| O-03 | Duplicate/revision/intervention rule (`INTERVENTION`, `RUNNO`, `LASTCHANGED`, …) | 1 |
-| O-04 | Direct NEMWeb vs `nemosis` adapter | 1 |
-| O-05 | Publication latency at the origin; whether a feature availability lag is needed | 1 (measure) / 3 (decide) |
+| O-01 | ~~Verify NEM market time~~ **Resolved 2026-10-14 (Phase 1)**: AEMO Spot Market Operations Timetable v1.10 says time references are AEST; raw DST-date check shows fixed UTC+10 | — |
+| O-02 | ~~Source table, definition, interval semantics~~ **Resolved 2026-10-14 (Phase 1)**: `DISPATCHREGIONSUM`; `SETTLEMENTDATE` = interval end; `TOTALDEMAND` defined in D-01 (see `docs/aemo_schema_audit.md`) | — |
+| O-03 | **Owner review required.** Which row represents demand in intervention intervals (`INTERVENTION` 0 = pricing run, 1 = physical run)? Not stated for DISPATCHREGIONSUM; the April 2024 sample has no intervention rows. All rows are preserved and flagged until decided. `RUNNO` is always 1; no PK duplicates were observed | before Phase 2 |
+| O-04 | ~~Adapter~~ **Resolved 2026-10-14 (Phase 1)**: direct NEMWeb MMSDM monthly archives (daily archives only cover the last ~12 months); `nemosis` not used | — |
+| O-05 | Historical publication latency is **not established** (`LASTCHANGED` is not first publication; 7/2016 VIC1 records changed up to 25 min after interval end). Recommendation: 1 h feature availability lag in the primary model, with a 0-lag sensitivity run | 3 (owner decides) |
 | O-06 | Calendar features: market time vs Victorian civil time (DST) for hour-of-day; holidays use civil dates | 3 |
 | O-07 | Primary point metric (MAE vs WAPE), folds, holdout, seeds in `configs/backtest.yaml` | 4 |
 | O-08 | How point baselines produce p10/p90 (e.g. fold-fitted empirical residual quantiles) | 4 |

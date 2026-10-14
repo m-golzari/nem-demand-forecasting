@@ -13,20 +13,20 @@ by `nem_forecast.config.ForecastConfig`; executable origin/horizon rules:
 |---|---|
 | Region | `VIC1` (filter and assert `REGIONID == "VIC1"`) |
 | Source field | AEMO regional `TOTALDEMAND` |
-| Source table | *OPEN (Phase 1)*: candidate `DISPATCHREGIONSUM`; intervention/run fields must be audited |
-| Field meaning | *VERIFY (Phase 1)*: official definition, not inferred from the name |
+| Source table | `DISPATCHREGIONSUM` from NEMWeb MMSDM monthly archives (Phase 1, D-02) |
+| Field meaning | Verified (D-01): NEMDE's 50% POE forecast of scheduled demand at the regional reference node for the **end** of each dispatch interval. Not a metered average |
 | Unit | MW (power) |
-| Native frequency | 5-minute dispatch intervals (*VERIFY*) |
-| Model target | Hourly **time-weighted mean MW**; for 12 complete equal 5-minute intervals this is the arithmetic mean. MW are never summed. Energy, if reported, is MWh = mean MW × 1 h and labelled MWh. |
+| Native frequency | 5-minute dispatch intervals (verified: 288 per market date, uniform spacing) |
+| Model target | Hourly **mean MW** of the 12 end-of-interval `TOTALDEMAND` values whose intervals lie in the hour (time-weighted mean = arithmetic mean for 12 equal intervals). MW are never summed. Energy, if reported, is MWh = mean MW × 1 h and labelled MWh. |
 
 ## 2. Time
 
 | Item | Value |
 |---|---|
-| Market timezone | NEM market time, fixed UTC+10, no daylight saving (*VERIFY*) |
+| Market timezone | NEM market time = AEST, fixed UTC+10, no daylight saving (verified: AEMO timetable + raw DST-date check) |
 | Canonical storage | timezone-aware UTC instants; source timestamp and market-time fields retained |
 | Hourly bin | left-closed `[start, start + 1 h)`, labelled by **start**, defined in market time and stored in UTC |
-| Source-to-bin mapping | *VERIFY (Phase 1/2)*: if `SETTLEMENTDATE` is interval-ending, the bin `[00:00, 01:00)` contains intervals ending 00:05…01:00 |
+| Source-to-bin mapping | Verified interval-ending: the bin `[00:00, 01:00)` contains the 12 records with `SETTLEMENTDATE` 00:05 … 01:00; source strings preserved (D-04) |
 
 Victorian civil time (AEST/AEDT) differs from market time by one hour during
 daylight saving. Market dates never have 23 or 25 hours.
@@ -56,9 +56,9 @@ before any correction.
   vintages and their availability at the origin are proven.
 - Observed target-hour weather is allowed only in a separately labelled
   realised-weather oracle experiment.
-- Publication latency: *OPEN (Phase 1 measures, Phase 3 decides)*. The contract
-  currently permits data ending exactly at the origin; if measured latency makes
-  that unrealistic, a lag will be added and recorded as a decision.
+- Publication latency: **not established** historically (Phase 1). Recommended:
+  a 1 h feature availability lag (latest usable record ends at origin − 1 h),
+  with a 0-lag sensitivity run. Owner decides in Phase 3 (O-05).
 - Every feature is registered in `docs/feature_registry.md`.
 
 ## 6. Data quality and late/revised data
@@ -67,8 +67,8 @@ before any correction.
   (default 1.0 = 12/12). Incomplete hours are flagged upstream and excluded
   from model-ready data by default; nothing is silently dropped, clipped, or
   interpolated.
-- Duplicate/revision resolution: *OPEN (Phase 1)*, only after the publication
-  and version fields are documented.
+- Duplicate/intervention resolution: **owner review required** (O-03). Until
+  decided, all records are preserved and flagged; none are dropped.
 
 ## 7. History, cadence, folds, holdout
 

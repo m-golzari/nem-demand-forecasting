@@ -1,0 +1,578 @@
+{
+ "retrieved_utc": "2026-10-14T01:21:39Z",
+ "months": [
+  {
+   "month": "2022-01",
+   "files": [
+    "PUBLIC_DVD_DISPATCHREGIONSUM_202201010000.zip"
+   ],
+   "bytes": 5503677,
+   "listed": [
+    "Thursday, February 10, 2022 01:10 PM"
+   ]
+  },
+  {
+   "month": "2022-02",
+   "files": [
+    "PUBLIC_DVD_DISPATCHREGIONSUM_202202010000.zip"
+   ],
+   "bytes": 5164666,
+   "listed": [
+    "Tuesday, March 8, 2022 05:33 PM"
+   ]
+  },
+  {
+   "month": "2022-03",
+   "files": [
+    "PUBLIC_DVD_DISPATCHREGIONSUM_202203010000.zip"
+   ],
+   "bytes": 5371974,
+   "listed": [
+    "Friday, April 8, 2022 01:47 PM"
+   ]
+  },
+  {
+   "month": "2022-04",
+   "files": [
+    "PUBLIC_DVD_DISPATCHREGIONSUM_202204010000.zip"
+   ],
+   "bytes": 5378445,
+   "listed": [
+    "Monday, May 9, 2022 10:54 AM"
+   ]
+  },
+  {
+   "month": "2022-05",
+   "files": [
+    "PUBLIC_DVD_DISPATCHREGIONSUM_202205010000.zip"
+   ],
+   "bytes": 5279036,
+   "listed": [
+    "Thursday, June 9, 2022 03:03 AM"
+   ]
+  },
+  {
+   "month": "2022-06",
+   "files": [
+    "PUBLIC_DVD_DISPATCHREGIONSUM_202206010000.zip"
+   ],
+   "bytes": 6215141,
+   "listed": [
+    "Wednesday, July 20, 2022 08:55 PM"
+   ]
+  },
+  {
+   "month": "2022-07",
+   "files": [
+    "PUBLIC_DVD_DISPATCHREGIONSUM_202207010000.zip"
+   ],
+   "bytes": 5470601,
+   "listed": [
+    "Friday, August 12, 2022 06:21 PM"
+   ]
+  },
+  {
+   "month": "2022-08",
+   "files": [
+    "PUBLIC_DVD_DISPATCHREGIONSUM_202208010000.zip"
+   ],
+   "bytes": 5668537,
+   "listed": [
+    "Friday, September 9, 2022 10:34 PM"
+   ]
+  },
+  {
+   "month": "2022-09",
+   "files": [
+    "PUBLIC_DVD_DISPATCHREGIONSUM_202209010000.zip"
+   ],
+   "bytes": 5331296,
+   "listed": [
+    "Saturday, October 8, 2022 07:02 PM"
+   ]
+  },
+  {
+   "month": "2022-10",
+   "files": [
+    "PUBLIC_DVD_DISPATCHREGIONSUM_202210010000.zip"
+   ],
+   "bytes": 5315538,
+   "listed": [
+    "Wednesday, November 9, 2022 10:46 PM"
+   ]
+  },
+  {
+   "month": "2022-11",
+   "files": [
+    "PUBLIC_DVD_DISPATCHREGIONSUM_202211010000.zip"
+   ],
+   "bytes": 5293867,
+   "listed": [
+    "Saturday, December 10, 2022 06:52 PM"
+   ]
+  },
+  {
+   "month": "2022-12",
+   "files": [
+    "PUBLIC_DVD_DISPATCHREGIONSUM_202212010000.zip"
+   ],
+   "bytes": 5223327,
+   "listed": [
+    "Monday, January 9, 2023 06:47 PM"
+   ]
+  },
+  {
+   "month": "2023-01",
+   "files": [
+    "PUBLIC_DVD_DISPATCHREGIONSUM_202301010000.zip"
+   ],
+   "bytes": 4962952,
+   "listed": [
+    "Wednesday, February 8, 2023 12:52 PM"
+   ]
+  },
+  {
+   "month": "2023-02",
+   "files": [
+    "PUBLIC_DVD_DISPATCHREGIONSUM_202302010000.zip"
+   ],
+   "bytes": 4493901,
+   "listed": [
+    "Wednesday, March 8, 2023 11:53 AM"
+   ]
+  },
+  {
+   "month": "2023-03",
+   "files": [
+    "PUBLIC_DVD_DISPATCHREGIONSUM_202303010000.zip"
+   ],
+   "bytes": 5178648,
+   "listed": [
+    "Friday, April 28, 2023 02:48 PM"
+   ]
+  },
+  {
+   "month": "2023-04",
+   "files": [
+    "PUBLIC_DVD_DISPATCHREGIONSUM_202304010000.zip"
+   ],
+   "bytes": 4903196,
+   "listed": [
+    "Wednesday, May 17, 2023 06:47 PM"
+   ]
+  },
+  {
+   "month": "2023-05",
+   "files": [
+    "PUBLIC_DVD_DISPATCHREGIONSUM_202305010000.zip"
+   ],
+   "bytes": 4993136,
+   "listed": [
+    "Monday, June 12, 2023 06:43 PM"
+   ]
+  },
+  {
+   "month": "2023-06",
+   "files": [
+    "PUBLIC_DVD_DISPATCHREGIONSUM_202306010000.zip"
+   ],
+   "bytes": 4936952,
+   "listed": [
+    "Monday, July 10, 2023 03:12 PM"
+   ]
+  },
+  {
+   "month": "2023-07",
+   "files": [
+    "PUBLIC_DVD_DISPATCHREGIONSUM_202307010000.zip"
+   ],
+   "bytes": 5035167,
+   "listed": [
+    "Thursday, August 10, 2023 03:34 PM"
+   ]
+  },
+  {
+   "month": "2023-08",
+   "files": [
+    "PUBLIC_DVD_DISPATCHREGIONSUM_202308010000.zip"
+   ],
+   "bytes": 4901239,
+   "listed": [
+    "Saturday, September 9, 2023 01:33 AM"
+   ]
+  },
+  {
+   "month": "2023-09",
+   "files": [
+    "PUBLIC_DVD_DISPATCHREGIONSUM_202309010000.zip"
+   ],
+   "bytes": 4768391,
+   "listed": [
+    "Saturday, October 14, 2023 05:10 PM"
+   ]
+  },
+  {
+   "month": "2023-10",
+   "files": [
+    "PUBLIC_DVD_DISPATCHREGIONSUM_202310010000.zip"
+   ],
+   "bytes": 5014363,
+   "listed": [
+    "Monday, November 13, 2023 08:37 PM"
+   ]
+  },
+  {
+   "month": "2023-11",
+   "files": [
+    "PUBLIC_DVD_DISPATCHREGIONSUM_202311010000.zip"
+   ],
+   "bytes": 4798496,
+   "listed": [
+    "Sunday, December 10, 2023 01:48 PM"
+   ]
+  },
+  {
+   "month": "2023-12",
+   "files": [
+    "PUBLIC_DVD_DISPATCHREGIONSUM_202312010000.zip"
+   ],
+   "bytes": 5010033,
+   "listed": [
+    "Tuesday, January 30, 2024 06:06 AM"
+   ]
+  },
+  {
+   "month": "2024-01",
+   "files": [
+    "PUBLIC_DVD_DISPATCHREGIONSUM_202401010000.zip"
+   ],
+   "bytes": 4849914,
+   "listed": [
+    "Tuesday, February 13, 2024 09:10 AM"
+   ]
+  },
+  {
+   "month": "2024-02",
+   "files": [
+    "PUBLIC_DVD_DISPATCHREGIONSUM_202402010000.zip"
+   ],
+   "bytes": 4696181,
+   "listed": [
+    "Saturday, March 9, 2024 12:42 AM"
+   ]
+  },
+  {
+   "month": "2024-03",
+   "files": [
+    "PUBLIC_DVD_DISPATCHREGIONSUM_202403010000.zip"
+   ],
+   "bytes": 4923949,
+   "listed": [
+    "Wednesday, April 17, 2024 10:36 PM"
+   ]
+  },
+  {
+   "month": "2024-04",
+   "files": [
+    "PUBLIC_DVD_DISPATCHREGIONSUM_202404010000.zip"
+   ],
+   "bytes": 4571235,
+   "listed": [
+    "Saturday, May 11, 2024 10:03 PM"
+   ]
+  },
+  {
+   "month": "2024-05",
+   "files": [
+    "PUBLIC_DVD_DISPATCHREGIONSUM_202405010000.zip"
+   ],
+   "bytes": 5201241,
+   "listed": [
+    "Wednesday, June 12, 2024 11:04 PM"
+   ]
+  },
+  {
+   "month": "2024-06",
+   "files": [
+    "PUBLIC_DVD_DISPATCHREGIONSUM_202406010000.zip"
+   ],
+   "bytes": 5056153,
+   "listed": [
+    "Tuesday, July 23, 2024 03:13 PM"
+   ]
+  },
+  {
+   "month": "2024-07",
+   "files": [
+    "PUBLIC_DVD_DISPATCHREGIONSUM_202407010000.zip"
+   ],
+   "bytes": 5322891,
+   "listed": [
+    "Thursday, August 15, 2024 03:54 PM"
+   ]
+  },
+  {
+   "month": "2024-08",
+   "files": [
+    "PUBLIC_ARCHIVE#DISPATCHREGIONSUM#FILE01#202408010000.zip"
+   ],
+   "bytes": 5845889,
+   "listed": [
+    "Tuesday, May 19, 2026 11:01 AM"
+   ]
+  },
+  {
+   "month": "2024-09",
+   "files": [
+    "PUBLIC_ARCHIVE#DISPATCHREGIONSUM#FILE01#202409010000.zip"
+   ],
+   "bytes": 5685173,
+   "listed": [
+    "Tuesday, May 19, 2026 11:12 AM"
+   ]
+  },
+  {
+   "month": "2024-10",
+   "files": [
+    "PUBLIC_ARCHIVE#DISPATCHREGIONSUM#FILE01#202410010000.zip"
+   ],
+   "bytes": 5965328,
+   "listed": [
+    "Tuesday, May 19, 2026 11:14 AM"
+   ]
+  },
+  {
+   "month": "2024-11",
+   "files": [
+    "PUBLIC_ARCHIVE#DISPATCHREGIONSUM#FILE01#202411010000.zip"
+   ],
+   "bytes": 5831254,
+   "listed": [
+    "Tuesday, May 19, 2026 11:18 AM"
+   ]
+  },
+  {
+   "month": "2024-12",
+   "files": [
+    "PUBLIC_ARCHIVE#DISPATCHREGIONSUM#FILE01#202412010000.zip"
+   ],
+   "bytes": 6093149,
+   "listed": [
+    "Tuesday, May 19, 2026 11:22 AM"
+   ]
+  },
+  {
+   "month": "2025-01",
+   "files": [
+    "PUBLIC_ARCHIVE#DISPATCHREGIONSUM#FILE01#202501010000.zip"
+   ],
+   "bytes": 6123606,
+   "listed": [
+    "Saturday, April 18, 2026 09:25 AM"
+   ]
+  },
+  {
+   "month": "2025-02",
+   "files": [
+    "PUBLIC_ARCHIVE#DISPATCHREGIONSUM#FILE01#202502010000.zip"
+   ],
+   "bytes": 5565370,
+   "listed": [
+    "Saturday, April 18, 2026 09:54 AM"
+   ]
+  },
+  {
+   "month": "2025-03",
+   "files": [
+    "PUBLIC_ARCHIVE#DISPATCHREGIONSUM#FILE01#202503010000.zip"
+   ],
+   "bytes": 6068882,
+   "listed": [
+    "Saturday, April 18, 2026 09:38 AM"
+   ]
+  },
+  {
+   "month": "2025-04",
+   "files": [
+    "PUBLIC_ARCHIVE#DISPATCHREGIONSUM#FILE01#202504010000.zip"
+   ],
+   "bytes": 5835709,
+   "listed": [
+    "Saturday, April 18, 2026 10:06 AM"
+   ]
+  },
+  {
+   "month": "2025-05",
+   "files": [
+    "PUBLIC_ARCHIVE#DISPATCHREGIONSUM#FILE01#202505010000.zip"
+   ],
+   "bytes": 6069925,
+   "listed": [
+    "Saturday, April 18, 2026 09:24 AM"
+   ]
+  },
+  {
+   "month": "2025-06",
+   "files": [
+    "PUBLIC_ARCHIVE#DISPATCHREGIONSUM#FILE01#202506010000.zip"
+   ],
+   "bytes": 5830411,
+   "listed": [
+    "Saturday, April 18, 2026 09:34 AM"
+   ]
+  },
+  {
+   "month": "2025-07",
+   "files": [
+    "PUBLIC_ARCHIVE#DISPATCHREGIONSUM#FILE01#202507010000.zip"
+   ],
+   "bytes": 6330371,
+   "listed": [
+    "Saturday, April 18, 2026 09:51 AM"
+   ]
+  },
+  {
+   "month": "2025-08",
+   "files": [
+    "PUBLIC_ARCHIVE#DISPATCHREGIONSUM#FILE01#202508010000.zip"
+   ],
+   "bytes": 6332236,
+   "listed": [
+    "Saturday, April 18, 2026 09:28 AM"
+   ]
+  },
+  {
+   "month": "2025-09",
+   "files": [
+    "PUBLIC_ARCHIVE#DISPATCHREGIONSUM#FILE01#202509010000.zip"
+   ],
+   "bytes": 6136871,
+   "listed": [
+    "Saturday, April 18, 2026 10:15 AM"
+   ]
+  },
+  {
+   "month": "2025-10",
+   "files": [
+    "PUBLIC_ARCHIVE#DISPATCHREGIONSUM#FILE01#202510010000.zip"
+   ],
+   "bytes": 6428789,
+   "listed": [
+    "Saturday, April 18, 2026 10:25 AM"
+   ]
+  },
+  {
+   "month": "2025-11",
+   "files": [
+    "PUBLIC_ARCHIVE#DISPATCHREGIONSUM#FILE01#202511010000.zip"
+   ],
+   "bytes": 6399606,
+   "listed": [
+    "Saturday, April 18, 2026 09:38 AM"
+   ]
+  },
+  {
+   "month": "2025-12",
+   "files": [
+    "PUBLIC_ARCHIVE#DISPATCHREGIONSUM#FILE01#202512010000.zip"
+   ],
+   "bytes": 6632473,
+   "listed": [
+    "Saturday, April 18, 2026 10:25 AM"
+   ]
+  },
+  {
+   "month": "2026-01",
+   "files": [
+    "PUBLIC_ARCHIVE#DISPATCHREGIONSUM#FILE01#202601010000.zip"
+   ],
+   "bytes": 6635585,
+   "listed": [
+    "Saturday, April 18, 2026 10:46 AM"
+   ]
+  },
+  {
+   "month": "2026-02",
+   "files": [
+    "PUBLIC_ARCHIVE#DISPATCHREGIONSUM#FILE01#202602010000.zip"
+   ],
+   "bytes": 5964118,
+   "listed": [
+    "Saturday, April 18, 2026 10:46 AM"
+   ]
+  },
+  {
+   "month": "2026-03",
+   "files": [
+    "PUBLIC_ARCHIVE#DISPATCHREGIONSUM#FILE01#202603010000.zip"
+   ],
+   "bytes": 6501776,
+   "listed": [
+    "Saturday, April 18, 2026 10:58 AM"
+   ]
+  },
+  {
+   "month": "2026-04",
+   "files": [
+    "PUBLIC_ARCHIVE#DISPATCHREGIONSUM#FILE01#202604010000.zip"
+   ],
+   "bytes": 6273208,
+   "listed": [
+    "Monday, May 18, 2026 05:27 PM"
+   ]
+  },
+  {
+   "month": "2026-05",
+   "files": [
+    "PUBLIC_ARCHIVE#DISPATCHREGIONSUM#FILE01#202605010000.zip"
+   ],
+   "bytes": 6459509,
+   "listed": [
+    "Tuesday, June 16, 2026 10:36 AM"
+   ]
+  },
+  {
+   "month": "2026-06",
+   "files": [
+    "PUBLIC_ARCHIVE#DISPATCHREGIONSUM#FILE01#202606010000.zip"
+   ],
+   "bytes": 6304083,
+   "listed": [
+    "Tuesday, July 14, 2026 12:05 PM"
+   ]
+  },
+  {
+   "month": "2026-07",
+   "files": [
+    "PUBLIC_ARCHIVE#DISPATCHREGIONSUM#FILE01#202607010000.zip"
+   ],
+   "bytes": 6507520,
+   "listed": [
+    "Thursday, August 13, 2026 02:54 PM"
+   ]
+  },
+  {
+   "month": "2026-08",
+   "files": [
+    "PUBLIC_ARCHIVE#DISPATCHREGIONSUM#FILE01#202608010000.zip"
+   ],
+   "bytes": 6435003,
+   "listed": [
+    "Monday, September 28, 2026 12:31 PM"
+   ]
+  },
+  {
+   "month": "2026-09",
+   "files": [
+    "PUBLIC_ARCHIVE#DISPATCHREGIONSUM#FILE01#202609010000.zip"
+   ],
+   "bytes": 6389946,
+   "listed": [
+    "Monday, October 12, 2026 10:32 AM"
+   ]
+  }
+ ],
+ "total_bytes": 319479933,
+ "n_months": 57,
+ "n_files": 57
+}

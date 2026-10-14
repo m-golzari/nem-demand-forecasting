@@ -5,8 +5,12 @@ next 24 hourly VIC1 demand values (hourly mean of AEMO `TOTALDEMAND`, MW) from
 a daily 00:00 NEM-market-time origin, with p10/p50/p90 outputs. It is not
 operated by AEMO or any retailer.
 
-**Status:** Phase 0 (contract and scaffold). No data has been downloaded and no
-models exist. See `IMPLEMENTATION_PLAN.md` and `docs/phase_reports/`.
+**Status:** Phase 1 complete (seven-day AEMO reconnaissance; see
+`docs/aemo_schema_audit.md`). No multi-year data and no models yet. See
+`IMPLEMENTATION_PLAN.md` and `docs/phase_reports/`.
+
+The target is the hourly mean of AEMO dispatch `TOTALDEMAND`. That is NEMDE's
+end-of-interval forecast of scheduled demand, not metered consumption.
 
 ## Setup (Python 3.11)
 
@@ -15,6 +19,12 @@ make install                 # creates .venv and installs -e ".[dev]"
 .venv/bin/nem-forecast validate-config
 .venv/bin/nem-forecast show-config
 make check                   # ruff + mypy + pytest + config CLI
+
+# Seven-day AEMO sample (official NEMWeb MMSDM archive; ~4.6 MB)
+.venv/bin/nem-forecast aemo-download --dry-run   # report URLs, sizes, destinations
+.venv/bin/nem-forecast aemo-download             # hashed, manifested, never overwritten
+.venv/bin/nem-forecast aemo-audit                # machine-readable schema/quality audit
+.venv/bin/nem-forecast aemo-normalise            # canonical VIC1 interim Parquet
 ```
 
 Tests run offline by default. Network tests are marked `network`; run them with

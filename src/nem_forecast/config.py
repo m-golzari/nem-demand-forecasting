@@ -117,3 +117,53 @@ def load_forecast_config(
     except yaml.YAMLError as exc:
         raise ConfigError(f"could not parse YAML in {config_path}: {exc}") from exc
     return parse_forecast_config(data)
+
+
+class ApprovedWindow(_Frozen):
+    """Market-date window, end exclusive: intervals in [start 00:00, end 00:00) market time."""
+
+    start_date: dt.date
+    end_date: dt.date
+
+    @model_validator(mode="after")
+    def _check_order(self) -> ApprovedWindow:
+        if self.end_date <= self.start_date:
+            raise ValueError("approved_window.end_date must be after start_date")
+        return self
+
+    @property
+    def days(self) -> int:
+        return (self.end_date - self.start_date).days
+
+
+class HttpConfig(_Frozen):
+    timeout_seconds: float = Field(gt=0)
+    max_attempts: int = Field(ge=1, le=10)
+    backoff_seconds: float = Field(ge=0)
+    user_agent: str = Field(min_length=1)
+
+
+class AemoSourceConfig(_Frozen):
+    source_id: Literal["aemo_nemweb_mmsdm"]
+    base_url: Literal["https://nemweb.com.au/Data_Archive/Wholesale_Electricity/MMSDM"]
+    table: Literal["DISPATCHREGIONSUM"]
+    approved_window: ApprovedWindow
+    max_window_days_without_owner_approval: int = Field(ge=1)
+    http: HttpConfig
+
+
+def load_aemo_source_config(
+    path: str | Path | None = None, paths: ProjectPaths | None = None
+) -> AemoSourceConfig:
+    """Load and validate ``configs/aemo_source.yaml`` (or ``path``, resolved against the root)."""
+    paths = paths or ProjectPaths.from_root()
+    config_path = paths.root / (path or "configs/aemo_source.yaml")
+    if not config_path.is_file():
+        raise ConfigError(f"AEMO source config not found: {config_path}")
+    try:
+        data = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        return AemoSourceConfig.model_validate(data)
+    except yaml.YAMLError as exc:
+        raise ConfigError(f"could not parse YAML in {config_path}: {exc}") from exc
+    except ValidationError as exc:
+        raise ConfigError(f"AEMO source config is invalid:\n{exc}") from exc

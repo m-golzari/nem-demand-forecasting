@@ -20,5 +20,11 @@ Column meanings:
 | observed temperature at `T` | S-03 | — | `T` | `T + 1 h` > `O` | **No** | `realised_weather_oracle` only | planned (Phase 5) |
 
 Check for `lag_24h`: at h = 24, `T = O + 23 h`, so the source interval
-`[O − 1 h, O)` ends exactly at `O`. Whether that is realistic depends on
-publication latency (decision O-05).
+`[O − 1 h, O)` ends exactly at `O`. Phase 1 could not establish historical
+publication latency and found records changed up to 25 min after their interval
+end. With the recommended 1 h availability lag (O-05), `lag_24h` at h = 24 is
+unavailable at the origin and needs a substitute (e.g. `lag_48h`).
+
+Source semantics (Phase 1): each hourly demand value is the mean of 12
+end-of-interval dispatch `TOTALDEMAND` values. Its latest source timestamp is
+the hour's end (the final `SETTLEMENTDATE`).
