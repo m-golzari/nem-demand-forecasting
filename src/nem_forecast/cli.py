@@ -24,6 +24,8 @@ from nem_forecast.ingestion.aemo_csv import AemoTable, read_aemo_zip
 from nem_forecast.ingestion.aemo_normalise import SourceRef, normalise_vic1
 from nem_forecast.paths import ProjectPaths, ProjectRootError
 from nem_forecast.provenance import sha256_file, utc_now_iso, write_json_atomic
+from nem_forecast.target import build as target_build
+from nem_forecast.target import reconcile as target_reconcile
 from nem_forecast.validation.aemo_audit import audit_dispatchregionsum
 from nem_forecast.validation.historical_audit import audit_snapshot
 
@@ -346,3 +348,88 @@ def aemo_historical_audit(
     if report["quarantined_rows"]:
         typer.echo("STOP: quarantined intervals require owner review", err=True)
         raise typer.Exit(code=2)
+
+
+@app.command("aemo-snapshot-lock")
+def aemo_snapshot_lock(
+    snapshot_name: Annotated[str, typer.Option("--snapshot", help="Complete snapshot ID.")],
+    root: RootOption = None,
+) -> None:
+    """Write the public, path-neutral lock manifest for a complete snapshot."""
+    paths, cfg = _source(root)
+    try:
+        lock = snapshot.build_lock(paths, cfg, snapshot_name)
+    except (nemweb.SourceResolutionError, nemweb.ArchiveValidationError) as exc:
+        raise _fail(exc) from exc
+    text = snapshot.lock_text(lock)
+    target = snapshot.lock_path(paths, snapshot_name)
+    if target.exists() and target.read_text(encoding="utf-8") != text:
+        raise _fail(FileExistsError(f"{target} exists with different content; not overwritten"))
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(text, encoding="utf-8")
+    typer.echo(
+        f"OK: lock {target.relative_to(paths.root)} | archives {lock['file_count']} | "
+        f"bytes {lock['total_bytes']} | sha256 {sha256_file(target)}"
+    )
+
+
+# --- Phase 2: hourly target --------------------------------------------------
+
+
+@app.command("build-hourly")
+def build_hourly_command(
+    run_id: Annotated[
+        str | None, typer.Option("--run-id", help="New run ID (default: timestamp).")
+    ] = None,
+    root: RootOption = None,
+) -> None:
+    """Build the canonical VIC1 hourly target from the locked snapshot (Phase 2)."""
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    paths, cfg = _source(root)
+    try:
+        forecast_cfg = load_forecast_config(paths=paths)
+        manifest = target_build.run_phase2(paths, forecast_cfg, cfg, run_id)
+    except (
+        ConfigError,
+        FileExistsError,
+        ValueError,
+        target_build.Phase2CheckError,
+        nemweb.SourceResolutionError,
+        nemweb.ArchiveValidationError,
+    ) as exc:
+        raise _fail(exc) from exc
+    rc = manifest["row_counts"]
+    typer.echo(
+        f"OK: run {manifest['run_id']} | hours {rc['hourly_records']} | complete "
+        f"{rc['complete_hours']} | incomplete {rc['incomplete_or_invalid_hours']} | "
+        f"model-ready {rc['model_ready_rows']} | git dirty {manifest['code'].get('dirty')}"
+    )
+
+
+@app.command("validate-data")
+def validate_data_command(
+    run_id: Annotated[str, typer.Option("--run-id", help="Phase 2 run ID to reconcile.")],
+    root: RootOption = None,
+) -> None:
+    """Independently reconcile a Phase 2 run with DuckDB (stdlib csv re-read of raw archives)."""
+    paths, _ = _source(root)
+    target = paths.results_runs / run_id / "independent_reconciliation.json"
+    try:
+        _check_new(target, force=False)
+        result = target_reconcile.reconcile_run(paths, run_id)
+    except (
+        FileExistsError,
+        ValueError,
+        nemweb.SourceResolutionError,
+        nemweb.ArchiveValidationError,
+    ) as exc:
+        raise _fail(exc) from exc
+    write_json_atomic(target, result)
+    failed = [c["check"] for c in result["checks"] if not c["passed"]]
+    typer.echo(
+        f"{'OK' if not failed else 'FAILED'}: {len(result['checks'])} checks, failed {failed} | "
+        f"max |target diff| {result['independent']['max_abs_target_difference_mw']} MW | "
+        f"report {target.relative_to(paths.root)}"
+    )
+    if failed:
+        raise typer.Exit(code=1)

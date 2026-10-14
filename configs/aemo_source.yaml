@@ -28,3 +28,6 @@ historical_snapshot:
   end_month: "2026-09"
   batch_size: 6
   pause_seconds_between_batches: 2
+  # Frozen snapshot used by Phase 2 and its public, path-neutral lock manifest.
+  snapshot_id: DISPATCHREGIONSUM_2022-01_2026-09_retrieved20261014
+  lock_manifest: configs/data_snapshots/DISPATCHREGIONSUM_2022-01_2026-09_retrieved20261014.lock.json

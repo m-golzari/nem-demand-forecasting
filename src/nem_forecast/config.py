@@ -151,6 +151,10 @@ class HistoricalSnapshotConfig(_Frozen):
     end_month: str = Field(pattern=_MONTH)
     batch_size: int = Field(ge=1, le=60)
     pause_seconds_between_batches: float = Field(ge=0)
+    snapshot_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_.-]+$")
+    lock_manifest: str | None = Field(
+        default=None, pattern=r"^configs/data_snapshots/[^/]+\.lock\.json$"
+    )
 
     @model_validator(mode="after")
     def _check_order(self) -> HistoricalSnapshotConfig:

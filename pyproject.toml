@@ -18,6 +18,8 @@ dependencies = [
     "httpx>=0.27,<1",
     "pandas>=2.2,<3",
     "pyarrow>=16,<22",
+    # Phase 2: independent reconciliation and reproducible SQL views
+    "duckdb>=1.0,<2",
 ]
 
 [project.optional-dependencies]
@@ -35,6 +37,9 @@ nem-forecast = "nem_forecast.cli:app"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+nem_forecast = ["py.typed", "target/sql/*.sql"]
 
 [tool.ruff]
 line-length = 100
@@ -63,3 +68,7 @@ python_version = "3.11"
 strict = true
 files = ["src"]
 plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["pyarrow", "pyarrow.*"]
+ignore_missing_imports = true

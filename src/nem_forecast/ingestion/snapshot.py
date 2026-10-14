@@ -13,6 +13,7 @@ run can never look like a complete snapshot.
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from collections.abc import Callable
@@ -24,7 +25,7 @@ import httpx
 from nem_forecast.config import AemoSourceConfig
 from nem_forecast.ingestion import nemweb
 from nem_forecast.paths import ProjectPaths
-from nem_forecast.provenance import read_json, utc_now_iso, write_json_atomic
+from nem_forecast.provenance import read_json, sha256_file, utc_now_iso, write_json_atomic
 
 logger = logging.getLogger(__name__)
 
@@ -209,3 +210,83 @@ def load_complete_snapshot(paths: ProjectPaths, table: str, snap_id: str) -> dic
     if document.get("status") != "complete":
         raise nemweb.SourceResolutionError(f"snapshot {snap_id} is not complete")
     return document
+
+
+LOCK_VERSION = 1
+LOCK_DIR = Path("configs") / "data_snapshots"
+
+
+def lock_path(paths: ProjectPaths, snap_id: str) -> Path:
+    return paths.root / LOCK_DIR / f"{snap_id}.lock.json"
+
+
+def build_lock(paths: ProjectPaths, cfg: AemoSourceConfig, snap_id: str) -> dict[str, Any]:
+    """Path-neutral public lock for a complete snapshot (no local paths or machine data).
+
+    Every archive is re-verified against its local manifest; the archive member
+    and report version are read from the archive itself.
+    """
+    document = load_complete_snapshot(paths, cfg.table, snap_id)
+    archives = []
+    for entry in document["files"]:
+        path = paths.root / entry["path"]
+        record = nemweb.verify_manifested_file(path, nemweb.manifest_path(path))
+        inspected = nemweb.inspect_archive(path, cfg.table)
+        member = inspected["zip_members"][0]
+        archives.append(
+            {
+                "month": record["archive_month"],
+                "filename": path.name,
+                "url": record["source_url"],
+                "bytes": record["bytes"],
+                "sha256": record["sha256"],
+                "retrieved_utc": record["retrieval_completed_utc"],
+                "listed_timestamp": record["listed_timestamp"],
+                "report_version": inspected["report_version"],
+                "archive_member": member["name"],
+                "archive_member_bytes": member["file_size"],
+                "archive_member_crc32": member["crc"],
+            }
+        )
+    return {
+        "lock_version": LOCK_VERSION,
+        "snapshot_id": snap_id,
+        "source_id": cfg.source_id,
+        "table": cfg.table,
+        "base_url": cfg.base_url,
+        "months": document["months"],
+        "description": document["description"],
+        "file_count": len(archives),
+        "total_bytes": sum(a["bytes"] for a in archives),
+        "archives": archives,
+    }
+
+
+def lock_text(lock: dict[str, Any]) -> str:
+    """Deterministic serialisation, so the lock hash is reproducible."""
+    return json.dumps(lock, indent=2, sort_keys=True, ensure_ascii=True) + "\n"
+
+
+def load_lock(path: Path) -> dict[str, Any]:
+    lock = read_json(path)
+    if lock.get("lock_version") != LOCK_VERSION:
+        raise nemweb.SourceResolutionError(f"unsupported lock version in {path.name}")
+    return lock
+
+
+def verify_lock_against_local(paths: ProjectPaths, lock: dict[str, Any]) -> list[Path]:
+    """Return local archive paths in month order, checking bytes and SHA-256 against the lock."""
+    out = []
+    for archive in lock["archives"]:
+        year = archive["month"][:4]
+        path = nemweb.raw_table_dir(paths, lock["table"]) / year / archive["filename"]
+        if not path.is_file():
+            raise nemweb.SourceResolutionError(
+                f"locked archive missing locally: {archive['filename']}"
+            )
+        if path.stat().st_size != archive["bytes"] or sha256_file(path) != archive["sha256"]:
+            raise nemweb.ArchiveValidationError(
+                f"hash inconsistency: {archive['filename']} does not match the lock"
+            )
+        out.append(path)
+    return out

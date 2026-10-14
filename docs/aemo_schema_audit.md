@@ -1,13 +1,31 @@
 # AEMO DISPATCHREGIONSUM schema audit (Phases 1 and 1B)
 
-Sample: VIC1 market dates **2024-04-04 to 2024-04-10 inclusive** (end-exclusive
-2024-04-11), i.e. canonical intervals `[2024-04-04 00:00, 2024-04-11 00:00)` NEM
-market time. The window includes Victoria's 2024 daylight-saving end
-(Sunday 2024-04-07, 03:00 AEDT → 02:00 AEST).
+## Reading guide: original Phase 1 record vs current conclusions
+
+This document has two layers. Both are dated.
+
+- **Phase 1 (seven-day reconnaissance, 2024-04-04 to 2024-04-10)**: §3, §4,
+  §6.1 and §7.1 record what was observed in that sample. They are kept
+  unchanged as a historical record. That sample contained **no intervention
+  records** and only one archive month was inspected. Those limits applied to
+  Phase 1 only.
+- **Current conclusions (Phase 1B, full snapshot 2022-01 to 2026-09)**: §2,
+  §5, §6.2, §7.2, §9 and §10. All 57 monthly archives and all five regions were
+  audited, including 3,487 intervention intervals. The intervention selection
+  rule is **settled** (owner decision D-06), and no intervention interval was
+  quarantined.
+
+Phase 1 sample: VIC1 market dates **2024-04-04 to 2024-04-10 inclusive**
+(end-exclusive 2024-04-11), i.e. canonical intervals
+`[2024-04-04 00:00, 2024-04-11 00:00)` NEM market time. The window includes
+Victoria's 2024 daylight-saving end (Sunday 2024-04-07, 03:00 AEDT →
+02:00 AEST).
 
 Machine-readable evidence (regenerable, git-ignored):
-`data/interim/aemo/dispatchregionsum/audit_vic1_20240404_20240411.json`,
-`.../vic1_20240404_20240411.parquet` and `.manifest.json`.
+- Phase 1: `data/interim/aemo/dispatchregionsum/audit_vic1_20240404_20240411.json`;
+- Phase 1B: `data/interim/aemo/dispatchregionsum/historical_audit/<snapshot>/historical_audit.json`;
+- the public snapshot lock: `configs/data_snapshots/<snapshot>.lock.json`
+  (committed; path-neutral).
 
 Evidence labels: **[DOC]** official AEMO documentation, **[RAW]** observed in
 the raw archive, **[INF]** inference, **[NE]** not established.
@@ -51,7 +69,7 @@ Notes on the sources:
 | `TOTALDEMAND` meaning | D1 says “Demand (less loads)”. D5 §2.1.2 says Total Demand is “the forecast demand at the Regional Reference Node (RRN) that is met by local generation from scheduled and semi-scheduled generating units and scheduled BDUs plus interconnector imports, excluding the local demand of scheduled loads … and the allocated interconnector losses, but including the demand met by Wholesale Demand Response”. In Dispatch it is SCADA initial values **plus `DemandForecast` and `AggregateDispatchError`**, and it is “determined before the optimisation process”. D5 Table 2 lists its forecast type as **50% POE**. | [DOC] D1, D5 |
 | `TOTALDEMAND` unit | MW. D5 defines demand as “the electrical power requirement (in megawatts, or MW)”, and the Table 4 formula sums MW quantities (InitialMW, MeteredMWFlow, MWLosses). D1 states no unit for this column. | [DOC] D5 §1, Table 4 |
 | `RUNNO` | “Dispatch run no; always 1” | [DOC] D1. [RAW] only value 1 in the file |
-| `INTERVENTION` | **Resolved (Phase 1B, [DOC] D10 §3.3):** “The base case target run solution is flagged as ‘Intervention=1’ and the intervention pricing run solution is flagged as ‘Intervention=0’.” D10's glossary says the outturn run is the “central dispatch run used to set dispatch targets … Also known as the ‘intervention run’ or ‘base case target run’”. D9 says the What-If/Pricing run sets settlement prices. Earlier evidence: DISPATCHREGIONSUM: “Manual Intervention flag”, part of the primary key. Sibling tables (e.g. PREDISPATCHREGIONSUM): “sourced from the pricing run (INTERVENTION=0) or the physical run (INTERVENTION=1). In the event there is not intervention in the market, both pricing and physical runs correspond to INTERVENTION=0”. DISPATCHCASESOLUTION refers to “package documentation”, which was not found in the report. | [DOC] D1, D2, D4 |
+| `INTERVENTION` | **Resolved (Phase 1B, [DOC] D10 §3.3):** “The base case target run solution is flagged as ‘Intervention=1’ and the intervention pricing run solution is flagged as ‘Intervention=0’.” D10's glossary says the outturn run is the “central dispatch run used to set dispatch targets … Also known as the ‘intervention run’ or ‘base case target run’”. D9 says the What-If/Pricing run sets settlement prices. Earlier evidence: DISPATCHREGIONSUM: “Manual Intervention flag”, part of the primary key. Sibling tables (e.g. PREDISPATCHREGIONSUM): “sourced from the pricing run (INTERVENTION=0) or the physical run (INTERVENTION=1). In the event there is not intervention in the market, both pricing and physical runs correspond to INTERVENTION=0”. DISPATCHCASESOLUTION refers to “package documentation”, which was not found in the report. **Scope note:** D10 is the methodology current at retrieval (v2.3, effective 3 June 2024). It is applied **retrospectively** to archives back to 2022-01. Earlier methodology versions were not retrieved, so the flag meaning for 2022–2024-05 rests on this current statement plus the consistent observed pattern (§10.3). This scope note does not reopen the D-06 selection rule. | [DOC] D1, D2, D4, D10 |
 | Primary key | `SETTLEMENTDATE, RUNNO, REGIONID, DISPATCHINTERVAL, INTERVENTION`; `LASTCHANGED` is an index column | [DOC] D1 |
 | `LASTCHANGED` | “Last date and time record changed” | [DOC] D1 |
 | Update cadence | “DISPATCHREGIONSUM updates every 5 minutes”. Dispatch runs every 5 minutes. Prices are published “within 5 minutes of AEMO running dispatch algorithm”. Regional “MW load and generation” for Day 0 is published at the start of the Day +1 trading day (NER 3.13.4(n)). | [DOC] D1, D6 §2.3–2.4 |
@@ -140,17 +158,26 @@ hourly mean of AEMO dispatch `TOTALDEMAND` estimates.
 
 ## 6. Duplicates, intervention, and revisions
 
-- **This sample:** no duplicates and no intervention records. There is exactly
+### 6.1 Phase 1 seven-day finding (historical record, 2024-04-04 to 2024-04-10)
+
+- The sample had no duplicates and no intervention records. There was exactly
   one record per (`SETTLEMENTDATE`, `REGIONID`) [RAW].
-- **General rule (resolved in Phase 1B by D-06; see §10).** Historical text from Phase 1: By official
-  definition, intervention intervals carry two rows: the pricing run
-  (`INTERVENTION=0`) and the physical run (`INTERVENTION=1`). Which row
-  represents the demand target is not stated for DISPATCHREGIONSUM. D5 says
-  `TOTALDEMAND` is computed *before* optimisation, which suggests (**[INF]**,
-  untested) that both rows carry the same value. April 2024 contains no
-  interventions, so this cannot be checked from the approved sample.
-  **No rule was invented.** The normaliser keeps all rows and flags
-  `q_has_intervention_counterpart` and `q_pk_duplicate`.
+- At that time, which run should represent the target was an open owner
+  question. The sample could not test whether physical and pricing values
+  differ.
+
+### 6.2 Current conclusion (Phase 1B, full snapshot)
+
+- **Selection rule (settled, owner decision D-06):** one ordinary record →
+  retained. Exactly one physical (`INTERVENTION=1`, base case target run) and
+  one pricing (`INTERVENTION=0`) record → the physical record is selected and
+  the difference recorded. Any other combination → quarantined. Both rows are
+  preserved upstream; they are never combined.
+- **Observed:** every intervention interval in 2022-01 to 2026-09 is exactly
+  one physical plus one pricing record, so 0 were quarantined. The two rows'
+  `TOTALDEMAND` is identical in 3,448 of 3,487 VIC1 intervals. The other 39
+  differ by up to 19.97 MW (§10.3). The Phase 1 inference that both rows would
+  carry the same value is therefore **only mostly true**.
 - **Revisions:** the archive is a snapshot “at the time the archive was
   created” [DOC D8]. The 2024-08 to 2024-12 archives are listed with a
   2026-05-19 timestamp, i.e. re-issued long after the month. From 2024-08 all
@@ -162,6 +189,8 @@ hourly mean of AEMO dispatch `TOTALDEMAND` estimates.
 
 ## 7. Publication latency (availability at origin)
 
+### 7.1 Phase 1 seven-day finding (historical record)
+
 - `LASTCHANGED − SETTLEMENTDATE` (VIC1, window): median −4.95 min, meaning
   records are typically last changed about 3 s after the interval **start**.
   However, 7 records (2024-04-08 12:40–13:10) changed **up to 25 minutes after
@@ -172,12 +201,18 @@ hourly mean of AEMO dispatch `TOTALDEMAND` estimates.
 - **Historical availability at the origin is NOT ESTABLISHED.** `LASTCHANGED`
   is a last-change time, not a first-publication time, and archive timestamps
   postdate the data.
-- **Recommendation for Phase 3:** exclude source intervals ending in the final
-  hour before the origin from the primary features. This is a feature
-  availability lag of 1 h: the latest usable record ends at origin − 1 h. It
-  covers the observed 25-minute delays. Report a 0-lag sensitivity run
-  separately. This changes `lag_24h` for h = 24 (see the feature registry).
-  Owner decision O-05.
+- Phase 1 recommended a 1 h feature availability lag with a 0-lag
+  sensitivity run.
+
+### 7.2 Current position
+
+- **Decided (D-07):** primary operational features may use demand intervals
+  ending ≤ origin − 1 h. This is a modelling assumption, not a measured
+  publication delay. A labelled zero-lag sensitivity profile is kept. The
+  buffer applies in Phase 3 feature construction, **not** in Phase 2 target
+  aggregation.
+- Historical availability remains **not established**. Phase 1B found
+  `LASTCHANGED` rewrites up to ~63 h after the interval (§10.4).
 
 ## 8. Adapter choice (O-04)
 
@@ -188,13 +223,21 @@ Direct NEMWeb MMSDM is the authoritative input:
   without adding provenance. It was not used. It may be added later as an
   optional cross-check.
 
-## 9. Known limitations
+## 9. Known limitations (current)
 
-- Only one month and one region were inspected in depth. No intervention
-  periods were observed.
-- The column-kind inference is heuristic (all values parse as numbers or
-  dates) and is not an official dtype.
-- The Data Model Report version differs from the archive's report version 5.
+- **Snapshot values:** the snapshot holds last-changed values only. Some
+  2022–2024 records were rewritten up to ~63 h later, so real-time values and
+  originally published files are not established (§10.4).
+- **Flag documentation scope:** the intervention flag documentation (D10,
+  effective 2024) is applied retrospectively to 2022–2024 archives (§2 scope
+  note).
+- **Data model versions:** the current Data Model Report was used, while the
+  archives span report versions 5, 8 and 9 (§10.2). Field definitions are
+  relied on only for columns present throughout.
+- **Column kinds:** the column-kind inference in the Phase 1 audit is
+  heuristic, not an official dtype.
+- **Depth of audit:** all five regions were audited for coverage and
+  intervention patterns. Only VIC1 was examined in depth for target purposes.
 
 ## 10. Phase 1B: historical snapshot audit (2022-01 to 2026-09)
 
@@ -240,7 +283,11 @@ are present in every file. **Schema supported.**
 ### 10.3 Intervention findings [RAW + DOC]
 
 - **Semantics (confirmed [DOC] D10 §3.3):** `INTERVENTION=1` = physical (base
-  case target/outturn) run; `INTERVENTION=0` = pricing (what-if) run.
+  case target/outturn) run; `INTERVENTION=0` = pricing (what-if) run. D10 v2.3
+  (effective 2024-06-03) is applied retrospectively to the 2022–2024
+  intervention episodes. The observed structure (exactly one record of each
+  flag per intervention interval, in every region) is consistent with it
+  throughout.
 - **Pattern:** every (interval, region) has either one record with
   `INTERVENTION=0` (2,479,525) or exactly one physical plus one pricing record
   (17,435 = 3,487 intervals × 5 regions). There are **0 quarantined rows** and
@@ -295,7 +342,7 @@ are present in every file. **Schema supported.**
   This is **not established** either way and is recorded as a limitation.
   D-07's 1 h buffer does not cover multi-hour rewrites.
 
-### 10.5 Unresolved anomalies (for owner review)
+### 10.5 Open anomalies (reviewed by the owner with Phase 1B approval; none blocks Phase 2)
 
 1. **SA1 non-positive `TOTALDEMAND`** (1,201 records). Not VIC1; flagged only.
    **[INF]** Plausibly genuine low scheduled demand with high rooftop PV; not

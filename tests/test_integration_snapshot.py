@@ -72,3 +72,57 @@ def test_bounded_audit_schema_and_selection(bounded: tuple) -> None:
         - statuses["pricing_not_selected"]
     )
     assert report["files"][-1]["settlementdate_max"] == "2026-10-01 00:00:00+10:00"
+
+
+def test_real_intervention_hour_uses_physical_value() -> None:
+    """2022-06-15 interval ending 06:20: physical - pricing = -19.97 MW (Phase 1B audit)."""
+    import datetime as dt
+
+    import pandas as pd
+
+    from nem_forecast.contract import NEM_MARKET_TZ
+    from nem_forecast.ingestion.aemo_csv import read_aemo_zip
+    from nem_forecast.ingestion.aemo_normalise import (
+        add_quality_flags,
+        classify_primary_records,
+        typed_frame,
+    )
+    from nem_forecast.target.hourly import TARGET_COLUMN, build_hourly
+    from nem_forecast.target.reconcile import read_raw_vic1
+
+    paths = ProjectPaths.from_root()
+    lock_file = paths.root / "configs" / "data_snapshots" / f"{SNAPSHOT}.lock.json"
+    try:
+        lock = snapshot.load_lock(lock_file)
+        archives = snapshot.verify_lock_against_local(paths, lock)
+    except Exception as exc:
+        pytest.skip(f"local snapshot unavailable: {exc}")
+    june = archives[[a["month"] for a in lock["archives"]].index("2022-06")]
+
+    # independent expectation from the stdlib reader
+    raw, _ = read_raw_vic1(june)
+    ends = [
+        f"2022/06/15 {h:02d}:{m:02d}:00" for h, m in [(6, m) for m in range(5, 60, 5)] + [(7, 0)]
+    ]
+    hour = raw[raw["settlementdate"].isin(ends)]
+    at_0620 = hour[hour["settlementdate"] == "2022/06/15 06:20:00"].set_index("intervention")
+    physical, pricing = (
+        float(at_0620.loc["1", "totaldemand"]),
+        float(at_0620.loc["0", "totaldemand"]),
+    )
+    assert physical - pricing == pytest.approx(-19.97, abs=1e-6)
+    chosen = hour.sort_values("intervention").groupby("settlementdate").tail(1)  # "1" > "0"
+    assert len(chosen) == 12
+    expected = chosen["totaldemand"].astype(float).mean()
+    pricing_only = hour[hour["intervention"] == "0"]["totaldemand"].astype(float).mean()
+
+    records = classify_primary_records(
+        add_quality_flags(typed_frame(read_aemo_zip(june)).query("region_id == 'VIC1'"))
+    )
+    label = pd.Timestamp(dt.datetime(2022, 6, 15, 6, tzinfo=NEM_MARKET_TZ))
+    hourly, _ = build_hourly(records, label, label)
+    h = hourly.set_index("hour_start_market").loc[label]
+    assert h["is_complete"] and h["intervention_affected"]
+    assert h[TARGET_COLUMN] == pytest.approx(expected, abs=1e-9)
+    assert abs(h[TARGET_COLUMN] - pricing_only) > 1e-6  # the pricing run would differ
+    assert h["max_abs_physical_minus_pricing_mw"] == pytest.approx(19.97, abs=1e-6)
