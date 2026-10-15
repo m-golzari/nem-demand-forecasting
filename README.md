@@ -1,87 +1,504 @@
-# NEM VIC1 demand forecasting (portfolio prototype)
+<div align="center">
 
-This is a reproducible, leakage-safe portfolio data product. It forecasts the
-next 24 hourly VIC1 demand values (hourly mean of AEMO `TOTALDEMAND`, MW) from
-a daily 00:00 NEM-market-time origin, with p10/p50/p90 outputs. It is not
-operated by AEMO or any retailer.
+# ⚡ NEM Demand Forecasting
 
-**Status:** Phase 2 (canonical VIC1 hourly target, 2022-01-01 to 2026-09-30)
-complete and awaiting owner review. 41,616 hourly targets were built from a
-locked snapshot of 57 official AEMO archives and reconciled independently
-(`docs/phase_reports/phase_2.md`). No features, models, API or dashboard yet.
-See `IMPLEMENTATION_PLAN.md` and `docs/phase_reports/`.
+### A reproducible pipeline for understanding and forecasting electricity demand in Victoria
 
-## What the target is (and is not)
+**From public five-minute market records to trustworthy hourly forecasts.**
 
-The target is the **hourly mean of AEMO dispatch `TOTALDEMAND` estimates for
-VIC1**, in MW. It is **not** measured consumption, metered load, total
-underlying demand, or observed average demand.
+`Python` · `AEMO NEMWeb` · `Parquet` · `DuckDB` · `Time-series forecasting`
 
-AEMO defines `TOTALDEMAND` as NEMDE's forecast of demand at the regional
-reference node met by scheduled and semi-scheduled generation, scheduled BDUs
-and interconnector imports. It is an estimate for the end of each 5-minute
-dispatch interval.
+</div>
 
-It **excludes**:
-- non-scheduled generation and rooftop PV;
-- scheduled loads;
-- allocated interconnector losses.
+---
 
-In intervention intervals, the physical (`INTERVENTION=1`) dispatch run record
-is used. Each hour `[H, H+1h)` (NEM market time, UTC+10, labelled `H`) is the
-arithmetic mean of the 12 estimates for intervals ending `H+00:05 … H+01:00`.
-Hours missing any of those 12 are kept, with reason flags, but excluded from
-the model-ready dataset. Full definitions and sources are in
-`docs/forecast_specification.md` and `docs/aemo_schema_audit.md`.
+## Why this project exists
 
-The input snapshot is pinned by a public lock manifest,
-`configs/data_snapshots/*.lock.json`. It records the URL, size, SHA-256,
-report version and archive member of every source file.
+Electricity demand never stands still. It rises when people wake up, changes
+with the weather, falls on public holidays, and can move sharply during unusual
+market events. Energy companies and grid operators need to anticipate those
+changes to plan generation, manage risk, and keep supply and demand in balance.
 
-## Setup (Python 3.11)
+This project asks a simple question:
 
-```bash
-make install                 # creates .venv and installs -e ".[dev]"
-.venv/bin/nem-forecast validate-config
-.venv/bin/nem-forecast show-config
-make check                   # ruff + mypy + pytest + config CLI
+> **Using only information that would have been available at the time, how well
+> can we forecast Victoria's electricity demand for the next 24 hours?**
 
-# Historical snapshot 2022-01..2026-09 (57 official archives, ~320 MB; owner-approved)
-.venv/bin/nem-forecast aemo-snapshot --dry-run --owner-approved-large-download
-.venv/bin/nem-forecast aemo-snapshot --owner-approved-large-download
-.venv/bin/nem-forecast aemo-historical-audit --snapshot <snapshot_id>
+Answering it responsibly takes more than fitting a machine-learning model. The
+source data arrive in five-minute intervals, follow market-specific time rules,
+contain special records during market interventions, and may be revised after
+publication. A forecast can also appear accurate while accidentally using
+information from the future.
 
-# Phase 2: hourly target from the locked snapshot, then independent DuckDB reconciliation
-.venv/bin/nem-forecast aemo-snapshot-lock --snapshot <snapshot_id>   # (re)build/verify the public lock
-.venv/bin/nem-forecast build-hourly --run-id <new_run_id>
-.venv/bin/nem-forecast validate-data --run-id <run_id>      # writes duckdb_views.sql into the run dir
+The project therefore starts with the less glamorous, but essential, work:
 
-# Seven-day AEMO sample (official NEMWeb MMSDM archive; ~4.6 MB)
-.venv/bin/nem-forecast aemo-download --dry-run   # report URLs, sizes, destinations
-.venv/bin/nem-forecast aemo-download             # hashed, manifested, never overwritten
-.venv/bin/nem-forecast aemo-audit                # machine-readable schema/quality audit
-.venv/bin/nem-forecast aemo-normalise            # canonical VIC1 interim Parquet
+- retrieving and preserving public market data;
+- documenting what each field really means;
+- handling market time and daylight saving correctly;
+- resolving intervention records without double-counting them;
+- building and validating an hourly target;
+- recording enough provenance to reproduce every result; and
+- designing later forecasting experiments to prevent look-ahead leakage.
+
+The aim is not merely to produce a forecast. It is to build a small, auditable
+data product whose results can be explained and trusted.
+
+---
+
+## The electricity market in plain English
+
+### What is the NEM?
+
+The **National Electricity Market (NEM)** is the interconnected wholesale
+electricity market covering eastern and southern Australia. It links five
+regions:
+
+- Queensland (`QLD1`)
+- New South Wales (`NSW1`)
+- Victoria (`VIC1`)
+- South Australia (`SA1`)
+- Tasmania (`TAS1`)
+
+Electricity is generated and consumed continuously, so the market is operated
+in short dispatch intervals. The **Australian Energy Market Operator (AEMO)**
+runs the NEM and publishes operational and market data through NEMWeb.
+
+### What is `VIC1`?
+
+`VIC1` is AEMO's identifier for the **Victorian region of the NEM**. It is a
+market region, not a household, retailer, suburb, or individual power station.
+In this project, each source value describes AEMO's regional dispatch-demand
+estimate for Victoria at a particular five-minute interval.
+
+The first version focuses on `VIC1` so the full pipeline can be developed and
+audited for one region before it is extended to the rest of the NEM.
+
+### What is being predicted?
+
+The target is the:
+
+> **Hourly mean of AEMO dispatch `TOTALDEMAND` estimates for `VIC1`, measured in
+> megawatts (MW).**
+
+AEMO publishes one `TOTALDEMAND` estimate for every five-minute dispatch
+interval. This project combines 12 consecutive estimates to create one hourly
+value.
+
+This target is operationally relevant, but it is not:
+
+- a direct meter reading of all electricity used in Victoria;
+- total underlying consumer demand;
+- household electricity consumption;
+- energy measured in megawatt-hours; or
+- AEMO's separate “operational demand” product.
+
+Among other details in AEMO's formal definition, `TOTALDEMAND` excludes rooftop
+solar and non-scheduled generation. See
+[`docs/aemo_schema_audit.md`](docs/aemo_schema_audit.md) for the full definition
+and supporting sources.
+
+---
+
+## The forecast contract
+
+The intended forecasting task is deliberately specific:
+
+| Question | Version 1 decision |
+|---|---|
+| Region | Victoria (`VIC1`) |
+| Forecast origin | 00:00 NEM market time each day |
+| Forecast horizon | The next 24 hourly intervals |
+| Target | Hourly mean of dispatch `TOTALDEMAND`, MW |
+| Planned outputs | p10, p50, and p90 for every target hour |
+| Primary predictors | Historical demand and calendar information |
+| Initial models | Seasonal baselines followed by LightGBM |
+| Evaluation | Rolling-origin backtesting—never a random split |
+
+For example, a forecast issued at market midnight covers:
+
+```text
+horizon 1  →  00:00–01:00, labelled 00:00
+horizon 2  →  01:00–02:00, labelled 01:00
+...
+horizon 24 →  23:00–00:00, labelled 23:00
 ```
 
-Tests run offline by default. Network tests are marked `network`; run them with
-`make test-network`.
+The p10 and p90 forecasts will form a nominal 80% prediction interval. The
+project will test whether that interval is actually calibrated rather than
+assuming it is.
 
-## Layout
+Strictly speaking, this is a **midnight-origin, next-24-hour forecast**. It is
+not presented as an AEMO pre-dispatch or market day-ahead product.
 
-| Path | Content |
+---
+
+## From five-minute records to an hourly target
+
+AEMO's source timestamps mark the **end** of each five-minute interval. The
+records stamped:
+
+```text
+00:05, 00:10, 00:15, ..., 01:00
+```
+
+are combined into a canonical hour represented as:
+
+```text
+[00:00, 01:00), labelled 00:00
+```
+
+The original AEMO timestamps are retained. This is an explicit normalisation of
+interval notation, not a shift in the underlying hour.
+
+A valid hourly target must contain all 12 expected five-minute endpoints,
+exactly once. An hour with a missing, duplicated, non-finite, or quarantined
+record is flagged and excluded from the model-ready dataset by default. Values
+are never silently filled, clipped, or averaged over an incomplete hour.
+
+### Intervention intervals
+
+During an AEMO intervention, the source may contain two records for the same
+region and interval:
+
+- `INTERVENTION=1`: the physical or base-case target run;
+- `INTERVENTION=0`: the intervention-pricing run.
+
+The pipeline preserves both upstream but uses the physical run for the
+forecasting target. It never averages the two or allows both into the same
+hour.
+
+---
+
+## Time without the daylight-saving trap
+
+The AEMO data used here follow fixed **Australian Eastern Standard Time (AEST,
+UTC+10)**. NEM market time does not move forward or backward with Victorian
+daylight saving.
+
+Every NEM market day therefore contains:
+
+```text
+24 hours = 288 five-minute intervals
+```
+
+Even when clocks in Melbourne repeat or skip an hour, the NEM market-time data
+remain continuous. The pipeline keeps three concepts separate:
+
+1. the timestamp supplied by AEMO;
+2. the fixed UTC+10 NEM market timestamp; and
+3. an unambiguous timezone-aware UTC timestamp.
+
+Tests cover Victorian daylight-saving boundaries. Future calendar features may
+also include Melbourne civil time to represent human activity, but civil time
+will never be used to reinterpret the source market intervals.
+
+---
+
+## Architecture
+
+```text
+┌──────────────────────────────┐
+│     AEMO NEMWeb archives     │
+│  monthly public data files   │
+└──────────────┬───────────────┘
+               │ download, hash, preserve
+               ▼
+┌──────────────────────────────┐
+│      Immutable raw data      │
+│  source manifest + SHA-256   │
+└──────────────┬───────────────┘
+               │ schema and quality audit
+               ▼
+┌──────────────────────────────┐
+│ Canonical five-minute records│
+│ UTC + market time + flags    │
+└──────────────┬───────────────┘
+               │ physical-run selection
+               │ endpoint normalisation
+               ▼
+┌──────────────────────────────┐
+│     Validated hourly target  │
+│ Parquet + quality reporting  │
+└──────────────┬───────────────┘
+               │ point-in-time features (planned)
+               ▼
+┌──────────────────────────────┐
+│ Rolling-origin backtesting   │
+│ baselines → LightGBM         │
+└──────────────┬───────────────┘
+               │ p10 / p50 / p90
+               ▼
+┌──────────────────────────────┐
+│ API, monitoring and dashboard│
+│            planned           │
+└──────────────────────────────┘
+```
+
+### Design rules
+
+1. **Time semantics come before modelling.** An unnoticed one-hour shift can
+   invalidate an otherwise sophisticated forecast.
+2. **No future information.** Every feature must have been available at its
+   historical forecast origin.
+3. **Baselines first.** Machine learning must beat credible previous-day and
+   previous-week forecasts.
+4. **Raw data remain raw.** Source archives are never edited in place.
+5. **Every result has provenance.** Configurations, hashes, code state, inputs,
+   predictions, and metrics belong to the run that produced them.
+6. **Failures remain visible.** Missing data, schema changes, and fallbacks are
+   reported rather than hidden.
+
+---
+
+## Current status
+
+The data foundation is complete through the hourly-target stage.
+
+| Component | Status |
 |---|---|
-| `src/nem_forecast/` | Package: `config`, `paths`, `contract`, `cli`, and stub subpackages for later phases |
-| `configs/forecast.yaml` | Version-1 forecast contract (validated) |
-| `configs/data_snapshots/` | Public, path-neutral snapshot lock manifests |
-| `src/nem_forecast/target/` | Phase 2 hourly target, reconciliation and DuckDB SQL |
-| `docs/` | Forecast specification, data source register, feature registry, decisions, phase reports |
-| `data/{raw,interim,processed}/` | Immutable raw inputs, then normalised data, then model-ready data (git-ignored) |
-| `results/runs/<run_id>/` | Run artefacts (git-ignored) |
-| `tests/` | Offline pytest suite |
+| Forecast and target contract | ✅ complete |
+| Official AEMO downloader and immutable raw snapshot | ✅ complete |
+| Schema, timestamp, and intervention audit | ✅ complete |
+| Canonical five-minute normalisation | ✅ complete |
+| Hourly VIC1 target and quality reporting | ✅ complete; under review |
+| Point-in-time feature builder | 🔜 next |
+| Seasonal forecasting baselines | 🔜 planned |
+| LightGBM point and quantile models | 🔜 planned |
+| Frozen final evaluation | 🔜 planned |
+| FastAPI service and monitoring | 🔜 planned |
+| Dashboard | 🔜 optional |
+
+### Current data result
+
+The locked source snapshot covers January 2022 through September 2026:
+
+| Result | Value |
+|---|---:|
+| Official monthly AEMO archives | 57 |
+| Compressed source data | ~320 MB |
+| Selected VIC1 five-minute intervals | 499,392 |
+| Complete hourly targets | 41,616 |
+| Incomplete hourly targets | 0 |
+| Coverage | 2022-01-01 00:00 to 2026-09-30 23:00 market time |
+
+A public lock manifest records the URL, filename, byte size, SHA-256 hash,
+report version, and archive member for every source file. The data themselves
+are downloaded locally and are not committed to Git.
+
+These are **data-pipeline results, not forecasting results**. No model
+performance is claimed yet.
+
+---
+
+## Quickstart
+
+### Prerequisites
+
+- Python 3.11
+- `make`
+- Internet access for AEMO downloads
+- Approximately 3 GB of free space for the full historical workflow
+
+### Install and run the offline checks
+
+```bash
+git clone https://github.com/m-golzari/nem-demand-forecasting.git
+cd nem-demand-forecasting
+
+make install
+.venv/bin/nem-forecast validate-config
+make check
+```
+
+`make check` runs formatting, linting, strict type checks, offline tests, and
+configuration validation.
+
+### Try the seven-day source audit
+
+```bash
+.venv/bin/nem-forecast aemo-download --dry-run
+.venv/bin/nem-forecast aemo-download
+.venv/bin/nem-forecast aemo-audit
+.venv/bin/nem-forecast aemo-normalise
+```
+
+The sample workflow downloads one official monthly archive and analyses a
+seven-day `VIC1` window.
+
+### Rebuild the full historical hourly target
+
+The explicit approval flag prevents an accidental large download.
+
+```bash
+# Preview and then retrieve the historical snapshot
+.venv/bin/nem-forecast aemo-snapshot \
+  --dry-run --owner-approved-large-download
+.venv/bin/nem-forecast aemo-snapshot \
+  --owner-approved-large-download
+
+# Audit and lock the exact input snapshot
+.venv/bin/nem-forecast aemo-historical-audit \
+  --snapshot <snapshot_id>
+.venv/bin/nem-forecast aemo-snapshot-lock \
+  --snapshot <snapshot_id>
+
+# Construct and independently validate the hourly target
+.venv/bin/nem-forecast build-hourly --run-id <new_run_id>
+.venv/bin/nem-forecast validate-data --run-id <run_id>
+```
+
+Raw data, processed data, logs, and run artefacts are intentionally ignored by
+Git. Portable source-lock metadata remains in the repository so the exact input
+snapshot can still be identified.
+
+---
+
+## Data quality and reproducibility
+
+The pipeline checks more than whether a CSV can be opened. It verifies:
+
+- archive identity, byte size, member name, and SHA-256 hash;
+- expected regions and source columns;
+- schema changes across archive versions;
+- contiguous five-minute coverage;
+- market-time and UTC conversion;
+- dispatch-period numbering;
+- duplicate and intervention combinations;
+- missing, non-finite, and unexpected demand values;
+- the 12 exact endpoints required for every hour;
+- source-to-hour row reconciliation; and
+- output hashes and date coverage.
+
+The input is best understood as a **2026 retrieval snapshot of final historical
+records**. Some older records have `LASTCHANGED` timestamps many hours after the
+original interval. The archive does not reveal every value a forecaster would
+have seen in real time. This limitation is documented rather than hidden.
+
+Future feature construction will use a conservative one-hour availability
+buffer in the primary experiment. That buffer is a modelling assumption—not a
+claim that AEMO always publishes data with a one-hour delay—and it cannot
+reconstruct values that were revised later.
+
+---
+
+## Planned modelling workflow
+
+### 1 · Point-in-time features
+
+Each training row will be defined by a forecast origin, target time, and
+horizon. Automated tests will ensure that historical-demand features do not use
+source information from after the origin.
+
+Planned features include previous-day and previous-week demand, recent
+same-hour summaries, hour, weekday, season, weekend, and Victorian public
+holidays.
+
+Observed future weather will not be used in the primary historical backtest. If
+explored, it will be labelled as a realised-weather oracle—not an operational
+forecast.
+
+### 2 · Baselines before machine learning
+
+The first forecasts will be deliberately simple:
+
+- previous-day same-hour demand;
+- previous-week same-hour demand;
+- recent same-hour/day-type mean; and
+- a fixed combination of day and week forecasts.
+
+These establish whether a more complex model provides genuine value.
+
+### 3 · Probabilistic LightGBM forecasts
+
+LightGBM will produce p10, p50, and p90 estimates. Rolling-origin evaluation
+will report MAE, RMSE, WAPE, bias, peak-period error, quantile loss, interval
+coverage and width, and performance across horizons, hours, seasons, and demand
+levels.
+
+The final holdout period will remain untouched until the model and evaluation
+rules have been frozen.
+
+---
+
+## Repository layout
+
+```text
+.
+├── configs/
+│   ├── forecast.yaml                 # version-1 forecast contract
+│   ├── aemo_source.yaml              # source and snapshot settings
+│   ├── feature_availability.yaml     # operational/sensitivity profiles
+│   └── data_snapshots/               # portable source lock manifests
+├── docs/
+│   ├── forecast_specification.md     # origin, horizon, and target rules
+│   ├── aemo_schema_audit.md          # source semantics and audit evidence
+│   ├── data_source_register.md       # documentation and provenance
+│   ├── feature_registry.md           # feature availability contract
+│   ├── decisions.md                  # project decision log
+│   └── phase_reports/                # commands and outcomes by phase
+├── src/nem_forecast/
+│   ├── ingestion/                    # NEMWeb retrieval and source parsing
+│   ├── validation/                   # schema and quality audits
+│   ├── target/                       # hourly target and reconciliation
+│   ├── features/                     # point-in-time features (planned)
+│   ├── models/                       # baselines and ML (planned)
+│   ├── evaluation/                   # backtests and metrics (planned)
+│   ├── monitoring/                   # monitoring (planned)
+│   └── api/                          # prediction service (planned)
+├── tests/                            # offline and marked integration tests
+├── data/                             # local data; Git-ignored
+├── results/runs/                     # local run artefacts; Git-ignored
+├── CLAUDE.md
+├── IMPLEMENTATION_PLAN.md
+├── pyproject.toml
+└── Makefile
+```
+
+---
+
+## Known limitations
+
+- `TOTALDEMAND` is a dispatch estimate, not total measured Victorian
+  consumption.
+- Historical archives contain final snapshot values, not a full reconstruction
+  of what was visible at every past forecast origin.
+- The project currently covers only `VIC1`.
+- No weather information is included in the primary model design at this stage.
+- No forecasting model has yet been trained or evaluated.
+- This is a portfolio project, not a system operated by AEMO, an energy
+  retailer, or a network business.
+
+These constraints are part of the project, not footnotes to hide. A useful
+forecasting system should make the limits of its evidence as visible as its best
+metric.
+
+---
+
+## Contributing
+
+Issues and pull requests are welcome, particularly around AEMO source
+semantics, time-series leakage, probabilistic evaluation, and clear
+communication of market data.
+
+Please read [`CLAUDE.md`](CLAUDE.md) and
+[`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) before making substantial
+changes. The project is developed in gated phases so that data and time
+assumptions are settled before model complexity is added.
+
+---
 
 ## Licence and data
 
-Project source code is released under the MIT License (`LICENSE`). External
-datasets (AEMO NEMWeb/MMS, Open-Meteo, and others) are **not** included in this
-repository and are governed by their providers' terms; the pipeline downloads
-them locally into git-ignored `data/` directories with provenance manifests.
+The project source code is available under the [MIT License](LICENSE).
+
+AEMO and other external datasets are not included in this repository. They
+remain subject to their providers' terms and are downloaded into local,
+Git-ignored directories. This project is independent of AEMO and is not
+endorsed by AEMO or any electricity-market participant.
+
+<div align="center">
+
+<sub>Good forecasts begin with honest timestamps, clear targets, and baselines
+that are difficult to beat.</sub>
+
+</div>
