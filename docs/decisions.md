@@ -97,7 +97,7 @@ owner may override), **Open** (needs a decision in the named phase).
 | ID | Decision | Rationale |
 |---|---|---|
 | D-33 | **Frozen development benchmark:** `day_week_hybrid` with weight 0.60, run `phase4_backtest_20261016_dev` (code `d72d939`). The values are in `docs/benchmarks/phase4_development_benchmark.json` and are checked against the README by tests. The original trailing-180-day calibration results and D-32 are preserved unchanged. No rerun was done to improve them | Owner approval of Phase 4 |
-| D-34 | **Repository-domain correction.** Commit `144ed3a` (owner CLAUDE.md protocol) had added generic workflow lines phrased in bioprocess terms from another project: "per-reactor" results, "mass-balance checks", "solver diagnostics", "numerical-convergence checks", "expensive simulations" and "a preregistered rule". They were rewritten in NEM terms in the closeout commit. History and tags were not rewritten, so the terms remain visible in `144ed3a`. `tests/test_domain_hygiene.py` now guards against recurrence | Owner instruction; this repository holds NEM project material only |
+| D-34 | **Repository-domain correction.** Generic workflow language phrased in the terminology of an unrelated project, added to `CLAUDE.md` by commit `144ed3a`, was rewritten in NEM terms (2026-10-16) and removed from all current tracked text. No external code, data, results, paths, credentials, personal information or confidential material was introduced. History and tags were not rewritten: commit `144ed3a` remains unchanged and still shows the original wording. `tests/test_domain_hygiene.py` checks the current tree with zero exceptions | Owner instruction; this repository holds NEM project material only |
 
 ## Open
 

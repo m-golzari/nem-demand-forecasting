@@ -1,14 +1,13 @@
-"""Repository-domain hygiene: no text imported from unrelated (bioprocess) projects.
+"""Repository-domain hygiene: current tracked text holds NEM project material only.
 
-High-specificity terms are checked in every tracked text file and filename.
-Matching is case-sensitive with word boundaries, so hexadecimal digests such as
-``...589dfba7...`` in the snapshot lock are not matches.
+High-specificity terms from an unrelated project domain are searched in every
+tracked filename and text file, with **zero exceptions**:
 
-Documented allowlist:
-- this test file (it must name the terms);
-- the decision-log row ``| D-34 |`` in ``docs/decisions.md``, which records
-  the 2026-10-16 correction and must quote the removed wording to be honest.
-No other legitimate match exists.
+* each pattern embeds a one-character class (for example ``re[a]ctor``), so the
+  pattern source in this file can never match itself;
+* matching is case-sensitive with word boundaries where a term could be a
+  substring of something else, so hexadecimal digests (e.g. SHA-256 values in
+  the snapshot lock) never match structurally. No hash value is allowlisted.
 """
 
 from __future__ import annotations
@@ -21,26 +20,24 @@ import pytest
 from tests.conftest import REPO_ROOT
 
 TERMS = [
-    r"per-reactor",
-    r"[Bb]ioreactor",
-    r"\bdFBA\b",
-    r"\bFBA\b",
-    r"\bMonod\b",
-    r"\bCHO\b",
-    r"\bE\. ?coli\b",
-    r"\bLaya\b",
-    r"[Bb]ioprocess",
-    r"[Bb]iopharma",
-    r"[Ff]ermentation",
-    r"[Cc]ell culture",
-    r"[Mm]ass[- ]balance",
-    r"[Ss]toichiometr",
-    r"\b[Bb]iomass\b",
-    r"\b[Mm]etabolic\b",
-    r"\b[Mm]etabolism\b",
+    r"per-re[a]ctor",
+    r"[Bb]iore[a]ctor",
+    r"\bd[F]BA\b",
+    r"\b[F]BA\b",
+    r"\bMon[o]d\b",
+    r"\bC[H]O\b",
+    r"\bE\. ?c[o]li\b",
+    r"\bL[a]ya\b",
+    r"[Bb]iopro[c]ess",
+    r"[Bb]iophar[m]a",
+    r"[Ff]ermen[t]ation",
+    r"[Cc]ell cul[t]ure",
+    r"[Mm]ass[- ]bal[a]nce",
+    r"[Ss]toichiome[t]r",
+    r"\b[Bb]ioma[s]s\b",
+    r"\b[Mm]etaboli[c]\b",
+    r"\b[Mm]etabolis[m]\b",
 ]
-ALLOWLIST = {"tests/test_domain_hygiene.py"}
-ALLOWED_LINE_PREFIXES = {"docs/decisions.md": "| D-34 |"}
 PATTERN = re.compile("|".join(TERMS))
 
 
@@ -54,33 +51,34 @@ def tracked_files() -> list[str]:
     return [line for line in out.splitlines() if line]
 
 
-def test_no_unrelated_domain_terms_in_tracked_text() -> None:
+def test_no_domain_specific_terms_in_tracked_text_zero_exceptions() -> None:
     hits = []
     for rel in tracked_files():
-        if rel in ALLOWLIST:
-            continue
         if PATTERN.search(rel):
             hits.append(f"filename: {rel}")
         try:
             text = (REPO_ROOT / rel).read_text(encoding="utf-8")
         except (UnicodeDecodeError, FileNotFoundError):
             continue
-        for n, line in enumerate(text.splitlines(), start=1):
-            if line.startswith(ALLOWED_LINE_PREFIXES.get(rel, "\0")):
-                continue
-            if PATTERN.search(line):
-                hits.append(f"{rel}:{n}: {line.strip()[:80]}")
+        hits += [
+            f"{rel}:{n}" for n, line in enumerate(text.splitlines(), 1) if PATTERN.search(line)
+        ]
     assert hits == []
 
 
-def test_pattern_catches_known_terms_but_not_hex_digests() -> None:
-    assert PATTERN.search("Move per-reactor results")
-    assert PATTERN.search("dFBA model") and PATTERN.search("Monod kinetics")
-    assert not PATTERN.search('"sha256": "c9b384d926a508d5fcbdbd7c10bbb390833b2a5cdd589dfba74710"')
-    assert not PATTERN.search("CHOICE of horizon")  # word boundary, case-sensitive
-
-
-def test_allowlist_is_minimal() -> None:
-    text = (REPO_ROOT / "docs" / "decisions.md").read_text(encoding="utf-8")
-    allowed = [line for line in text.splitlines() if PATTERN.search(line)]
-    assert len(allowed) == 1 and allowed[0].startswith("| D-34 |")
+def test_patterns_match_terms_but_not_their_own_source_or_hashes() -> None:
+    for term in (
+        "per-" + "re" + "actor",
+        "dF" + "BA",
+        "Mon" + "od",
+        "C" + "HO",
+        "E. " + "coli",
+        "La" + "ya",
+        "bio" + "process",
+        "mass" + "-balance",
+    ):
+        assert PATTERN.search(f"x {term} y"), term
+    assert not PATTERN.search(TERMS[0]) and not PATTERN.search("|".join(TERMS))
+    digest = "c9b384d926a508d5fcbdbd7c10bbb390833b2a5cdd589" + "dfba" + "74710"
+    assert not PATTERN.search(digest)  # word boundaries + case sensitivity, not an allowlist
+    assert not PATTERN.search("CHOICE of horizon")
