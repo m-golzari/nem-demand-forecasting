@@ -126,3 +126,46 @@ def test_real_intervention_hour_uses_physical_value() -> None:
     assert h[TARGET_COLUMN] == pytest.approx(expected, abs=1e-9)
     assert abs(h[TARGET_COLUMN] - pricing_only) > 1e-6  # the pricing run would differ
     assert h["max_abs_physical_minus_pricing_mw"] == pytest.approx(19.97, abs=1e-6)
+
+
+@pytest.mark.parametrize("profile, lag", [("primary_operational", 1), ("sensitivity_zero_lag", 0)])
+def test_real_features_bounded_window_match_truncated_reference(profile: str, lag: int) -> None:
+    """Real Phase 2 target; origins 2022-06-01..2022-07-31 (spans June 2022 interventions)."""
+    import datetime as dt
+
+    import numpy as np
+    import pandas as pd
+
+    from nem_forecast.config import load_feature_config
+    from nem_forecast.features.build import load_phase2, source_endpoint_contract_check
+    from nem_forecast.features.calendar import vic_public_holidays
+    from nem_forecast.features.design import build_profile, design_keys
+    from nem_forecast.features.history import Observations
+    from nem_forecast.features.reference import reference_features
+    from nem_forecast.target.hourly import TARGET_COLUMN
+
+    paths = ProjectPaths.from_root()
+    try:
+        hourly, _ = load_phase2(paths, load_feature_config().input_phase2_run_id)
+    except Exception as exc:
+        pytest.skip(f"approved Phase 2 run unavailable locally: {exc}")
+    assert source_endpoint_contract_check(hourly)["passed"]
+    window = hourly[hourly["hour_start_utc"] < pd.Timestamp("2022-08-01", tz="UTC")]
+    obs = Observations.from_hourly(window, TARGET_COLUMN)
+    keys = design_keys(dt.date(2022, 6, 1), dt.date(2022, 7, 31))
+    wide, audit = build_profile(obs, keys, profile, lag, vic_public_holidays(range(2021, 2024)))
+    used = audit[audit["available"]]
+    assert (used["latest_source_endpoint_utc"] <= used["cutoff_utc"]).all()
+    origins = np.unique(wide["origin_utc"].to_numpy(dtype="datetime64[ns]").astype(np.int64))
+    ref = reference_features(obs, origins, lag)
+    merged = audit.assign(
+        origin_ns=audit["origin_utc"].to_numpy(dtype="datetime64[ns]").astype(np.int64)
+    ).merge(ref, on=["origin_ns", "horizon", "feature"], suffixes=("", "_ref"))
+    assert len(merged) == len(audit) == len(ref)
+    assert (merged["available"] == merged["available_ref"]).all()
+    both = merged["available"]
+    np.testing.assert_allclose(
+        merged.loc[both, "value"], merged.loc[both, "value_ref"], atol=1e-9, rtol=0
+    )
+    h24 = wide[wide["horizon"] == 24]
+    assert (h24["lag_24h__available"] == (lag == 0)).all()

@@ -143,6 +143,7 @@ def git_state(root: Path) -> dict[str, Any]:
             "commit": run("rev-parse", "HEAD"),
             "dirty": bool(porcelain),
             "uncommitted_entries": len(porcelain.splitlines()) if porcelain else 0,
+            "uncommitted_paths": [line[3:] for line in porcelain.splitlines()],
         }
     except (OSError, subprocess.CalledProcessError) as exc:
         return {"commit": None, "dirty": None, "error": str(exc)}

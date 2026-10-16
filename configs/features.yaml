@@ -1,0 +1,24 @@
+# Phase 3 point-in-time feature set (feature_set_version 1).
+# Every feature is registered in docs/feature_registry.md. Changing this file
+# requires a registry update and a decision-log entry.
+feature_set_version: 1
+
+# Approved Phase 2 run whose canonical hourly target is the only demand input.
+input_phase2_run_id: phase2_vic1_hourly_20261014_full
+
+# Availability profiles come from configs/feature_availability.yaml.
+profiles: [primary_operational, sensitivity_zero_lag]
+
+civil_calendar:
+  timezone: Australia/Melbourne
+  holidays_country: AU
+  holidays_subdivision: VIC
+
+historical_demand:
+  target_relative_lags_hours: [24, 48, 168]
+  recent_windows:
+    "24": [mean, std, min, max]
+    "168": [mean, std]
+  same_hour:
+    recent_available_days: 7
+    same_weekday_weeks: 4

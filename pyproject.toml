@@ -20,6 +20,8 @@ dependencies = [
     "pyarrow>=16,<22",
     # Phase 2: independent reconciliation and reproducible SQL views
     "duckdb>=1.0,<2",
+    # Phase 3: Victorian public holidays (pinned: holiday data changes features)
+    "holidays>=0.106,<0.107",
 ]
 
 [project.optional-dependencies]
@@ -39,7 +41,7 @@ nem-forecast = "nem_forecast.cli:app"
 where = ["src"]
 
 [tool.setuptools.package-data]
-nem_forecast = ["py.typed", "target/sql/*.sql"]
+nem_forecast = ["py.typed", "target/sql/*.sql", "features/sql/*.sql"]
 
 [tool.ruff]
 line-length = 100

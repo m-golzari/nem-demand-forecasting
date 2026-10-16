@@ -233,3 +233,53 @@ def load_feature_availability_config(
         raise ConfigError(f"could not parse YAML in {config_path}: {exc}") from exc
     except ValidationError as exc:
         raise ConfigError(f"feature availability config is invalid:\n{exc}") from exc
+
+
+class CivilCalendarConfig(_Frozen):
+    timezone: Literal["Australia/Melbourne"]
+    holidays_country: Literal["AU"]
+    holidays_subdivision: Literal["VIC"]
+
+
+class SameHourConfig(_Frozen):
+    recent_available_days: Literal[7]
+    same_weekday_weeks: Literal[4]
+
+
+class HistoricalDemandConfig(_Frozen):
+    target_relative_lags_hours: tuple[Literal[24], Literal[48], Literal[168]]
+    recent_windows: dict[Literal["24", "168"], tuple[str, ...]]
+    same_hour: SameHourConfig
+
+    @field_validator("recent_windows")
+    @classmethod
+    def _check_windows(cls, value: dict[str, tuple[str, ...]]) -> dict[str, tuple[str, ...]]:
+        if value != {"24": ("mean", "std", "min", "max"), "168": ("mean", "std")}:
+            raise ValueError("recent_windows must match the registered feature set v1")
+        return value
+
+
+class FeatureConfig(_Frozen):
+    """Phase 3 feature set v1. Fields are fixed so unregistered features cannot be enabled."""
+
+    feature_set_version: Literal[1]
+    input_phase2_run_id: str = Field(pattern=r"^[A-Za-z0-9_.-]+$")
+    profiles: tuple[Literal["primary_operational"], Literal["sensitivity_zero_lag"]]
+    civil_calendar: CivilCalendarConfig
+    historical_demand: HistoricalDemandConfig
+
+
+def load_feature_config(
+    path: str | Path | None = None, paths: ProjectPaths | None = None
+) -> FeatureConfig:
+    paths = paths or ProjectPaths.from_root()
+    config_path = paths.root / (path or "configs/features.yaml")
+    if not config_path.is_file():
+        raise ConfigError(f"feature config not found: {config_path}")
+    try:
+        data = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        return FeatureConfig.model_validate(data)
+    except yaml.YAMLError as exc:
+        raise ConfigError(f"could not parse YAML in {config_path}: {exc}") from exc
+    except ValidationError as exc:
+        raise ConfigError(f"feature config is invalid:\n{exc}") from exc

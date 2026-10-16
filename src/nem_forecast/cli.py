@@ -17,8 +17,12 @@ from nem_forecast.config import (
     ConfigError,
     ForecastConfig,
     load_aemo_source_config,
+    load_feature_availability_config,
+    load_feature_config,
     load_forecast_config,
 )
+from nem_forecast.features import build as feature_build
+from nem_forecast.features import reconcile as feature_reconcile
 from nem_forecast.ingestion import nemweb, snapshot
 from nem_forecast.ingestion.aemo_csv import AemoTable, read_aemo_zip
 from nem_forecast.ingestion.aemo_normalise import SourceRef, normalise_vic1
@@ -430,6 +434,65 @@ def validate_data_command(
         f"{'OK' if not failed else 'FAILED'}: {len(result['checks'])} checks, failed {failed} | "
         f"max |target diff| {result['independent']['max_abs_target_difference_mw']} MW | "
         f"report {target.relative_to(paths.root)}"
+    )
+    if failed:
+        raise typer.Exit(code=1)
+
+
+# --- Phase 3: point-in-time features ----------------------------------------
+
+
+@app.command("build-features")
+def build_features_command(
+    run_id: Annotated[
+        str | None, typer.Option("--run-id", help="New run ID (default: timestamp).")
+    ] = None,
+    root: RootOption = None,
+) -> None:
+    """Build point-in-time feature tables for both availability profiles (Phase 3)."""
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    try:
+        paths = ProjectPaths.from_root(root)
+        manifest = feature_build.run_phase3(
+            paths,
+            load_forecast_config(paths=paths),
+            load_feature_config(paths=paths),
+            load_feature_availability_config(paths=paths),
+            run_id,
+        )
+    except (
+        ConfigError,
+        ProjectRootError,
+        FileExistsError,
+        ValueError,
+        feature_build.Phase3CheckError,
+    ) as exc:
+        raise _fail(exc) from exc
+    summary = {p: manifest["checks"][p]["rows"] for p in manifest["profiles"]}
+    typer.echo(
+        f"OK: run {manifest['run_id']} | rows {summary} | leakage checks passed | "
+        f"git dirty {manifest['code'].get('dirty')}"
+    )
+
+
+@app.command("validate-features")
+def validate_features_command(
+    run_id: Annotated[str, typer.Option("--run-id", help="Phase 3 run ID.")],
+    root: RootOption = None,
+) -> None:
+    """Compact DuckDB reconciliation of a Phase 3 run (lags/windows recomputed in SQL)."""
+    paths, _ = _source(root)
+    target = paths.results_runs / run_id / "duckdb_feature_reconciliation.json"
+    try:
+        _check_new(target, force=False)
+        result = feature_reconcile.reconcile_features(paths, run_id)
+    except (FileExistsError, ValueError) as exc:
+        raise _fail(exc) from exc
+    write_json_atomic(target, result)
+    failed = [c["check"] for c in result["checks"] if not c["passed"]]
+    typer.echo(
+        f"{'OK' if not failed else 'FAILED'}: {len(result['checks'])} checks, failed {failed} "
+        f"| report {target.relative_to(paths.root)}"
     )
     if failed:
         raise typer.Exit(code=1)
