@@ -218,3 +218,60 @@ integration test, `tests/test_docs.py`, and a git-state regression test.
 | Future data cannot change features at an origin | Offline perturbation test |
 | Values were published by the origin in real time | **Not established** (snapshot values; D-07 is an assumption) |
 | Holiday calendar correctness | `holidays` 0.106 (third-party), spot-checked by tests against known VIC dates |
+
+## Closeout (2026-10-16, after owner approval)
+
+**Clean tree.** The owner's `CLAUDE.md` edit was reviewed and committed as
+`144ed3a`:
+- 133 added lines, 0 deletions (a token-efficient working protocol);
+- no secrets or machine paths;
+- no weakened controls (its §7 keeps every quality gate).
+
+Closeout tooling was committed as `f35ff79`.
+
+**Canonical run: `phase3_features_20261016_clean`.** Code `f35ff79`,
+`dirty: false`. SLURM 33158036, COMPLETED 0:0, which also ran:
+- the full gate: 192 offline and 5 integration tests passed; lint, format and
+  strict mypy clean;
+- `build-features`: leakage checks passed, 41,616 rows per profile;
+- `validate-features`: 9 of 9 checks passed;
+- `compare-feature-runs` against r2.
+
+Manifest SHA-256 `e407910b719fea439d14578f4062ef89277ff80758895c342d6c3f2cedb6322b`.
+
+**Comparison with `phase3_features_20261016_r2`** (superseded evidence, kept on
+disk): **not byte-identical, logically identical.**
+
+| Dataset | Rows | Bytes identical | Schema identical (without metadata) | Frames exactly equal | Logical hash (both runs) |
+|---|---|---|---|---|---|
+| `primary_operational/audit` | 457,776 | no | yes | yes | `b0191db7a8216ce8f3675a23869871ab8ecd50bcb719bf3c52b9f711a6b15137` |
+| `primary_operational/features` | 41,616 | no | yes | yes | `d7be273dc56adc6f8425b94a2740b244ae2f61b47b79a260d0bac3002c8fd0ca` |
+| `sensitivity_zero_lag/audit` | 457,776 | no | yes | yes | `2b51db0345866fca0ebce7c1666821cc0bf548e4549f60b68fbc879c9932b1b1` |
+| `sensitivity_zero_lag/features` | 41,616 | no | yes | yes | `af6506a726b1c55772c072df5758ecf13bac5eea23f93e110c9d1c1de3c8d476` |
+
+The only Parquet metadata key that differs is `nem_forecast.run_id`. Every
+build writes it into the schema metadata, so byte identity is impossible by
+design. Logical identity was checked on:
+- the Arrow schema without metadata;
+- row counts;
+- exact `assert_frame_equal`;
+- a SHA-256 over `pandas.util.hash_pandas_object` values plus column names
+  and dtypes.
+
+Report results:
+- `eligibility_report.json` and `schema_report.json` are byte-identical;
+- the Markdown reports are identical after normalising the run ID in their
+  title line;
+- `leakage_checks.json` is identical apart from timing.
+
+Canonical output hashes (prefixes; full values in the manifest):
+
+| Profile | Dataset | Annual partitions |
+|---|---|---|
+| primary_operational | audit | 2022: `b5d3db44adce3ba6…`, 2023: `1fca37e4ed816d03…`, 2024: `28d15f48e60ff3d1…`, 2025: `14cf045f62ef5bc8…`, 2026: `80728119920eb808…` |
+| primary_operational | features | 2022: `2f41cc03bcd6a0ad…`, 2023: `e3a14e0570d5a24b…`, 2024: `a57299cf18346c58…`, 2025: `95e4fc45aa016b39…`, 2026: `8dcd8a65f12bc204…` |
+| sensitivity_zero_lag | audit | 2022: `626d00a10162e89c…`, 2023: `8bd584111d9e4c4d…`, 2024: `66040cb9a684a6a9…`, 2025: `d54573ff9e21cac7…`, 2026: `6e7e496cc867de32…` |
+| sensitivity_zero_lag | features | 2022: `3d4cb6674458ab27…`, 2023: `3181305d082222a0…`, 2024: `d456c27750c68902…`, 2025: `25997663aca321af…`, 2026: `b04327c961e99e4e…` |
+
+**Tag:** `feature-contract-v1` (annotated, immutable) is on the closeout commit
+that records this run.

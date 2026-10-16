@@ -26,8 +26,9 @@ manifests.
   - 41,616 of 41,616 complete hours, 2022-01-01 00:00 to 2026-09-30 23:00
     (+10:00);
   - manifest SHA-256 `da3ed96c…`.
-- Phase 3 run `phase3_features_20261016_r2` (code `cea47ae`; dirty only by
-  the owner's `CLAUDE.md`):
+- Phase 3 **canonical** run `phase3_features_20261016_clean` (code `f35ff79`,
+  clean; manifest `e407910b…`). It is logically identical to the superseded
+  r2 run (code `cea47ae`). Details:
   - profiles `primary_operational` (cutoff `O − 1 h`) and
     `sensitivity_zero_lag` (cutoff `O`; sensitivity only);
   - manifest SHA-256 `4cb6a3a4…`.

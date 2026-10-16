@@ -5,6 +5,7 @@ feature_set_version: 1
 
 # Approved Phase 2 run whose canonical hourly target is the only demand input.
 input_phase2_run_id: phase2_vic1_hourly_20261014_full
+# Canonical Phase 3 output built from this config: phase3_features_20261016_clean (feature-contract-v1).
 
 # Availability profiles come from configs/feature_availability.yaml.
 profiles: [primary_operational, sensitivity_zero_lag]
