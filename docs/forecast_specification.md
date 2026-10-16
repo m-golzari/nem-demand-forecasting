@@ -130,6 +130,18 @@ before any correction.
   complete, from 2022-01-01 00:00 to 2026-09-30 23:00. Independently
   reconciled.
 
+## 6b. Phase 3 feature dataset (`nem_forecast.features`)
+
+- **Rows:** one per (profile, origin, horizon): 1,734 origins × 24 = 41,616
+  per profile. All rows are kept, with eligibility flags.
+- **Cutoff:** applied to each observation's actual latest source endpoint
+  (`≤ origin − lag`). The latest usable hourly label is `origin − 2 h`
+  (primary) or `origin − 1 h` (zero lag, sensitivity only).
+- **Registry:** features, formulas, lookbacks and availability rules are in
+  `docs/feature_registry.md`. `lag_24h` at h = 24 is structurally
+  unavailable under the primary profile (null, flagged, not substituted).
+- **Leakage proof:** see `docs/phase_reports/phase_3.md`.
+
 ## 7. History, cadence, folds, holdout
 
 - History: market dates 2022-01-01 to 2026-09-30, i.e. interval ends from

@@ -58,6 +58,18 @@ owner may override), **Open** (needs a decision in the named phase).
 | D-12 | Phase 2 is validated by an independent path: a stdlib `csv` re-read of the raw archives plus DuckDB re-derivation of selection, hour mapping and means, compared with the outputs (tolerance 10⁻⁹ MW) | Guards against shared-code errors | — |
 | D-13 | `configs/forecast.yaml` history end is frozen at 2026-09-30, matching the snapshot | Owner freeze (Phase 1B) | — |
 
+## Phase 3 decisions (2026-10-16)
+
+| ID | Decision | Rationale | Revisit if |
+|---|---|---|---|
+| D-14 | Design table: every market date 2022-01-01 … 2026-09-30 × horizons 1–24 = 41,616 rows per profile. Rows are never dropped; eligibility is expressed by flags | Owner instruction; warm-up is derived, not hard-coded | — |
+| D-15 | Availability is decided per required observation from its **actual** latest source endpoint (Phase 2 `last_source_settlementdate`) `≤ origin − lag`. The latest usable label is `origin − 2 h` (primary) or `origin − 1 h` (zero lag) | Owner instruction: the cutoff applies to source endpoints, not labels | — |
+| D-16 | `lag_24h` at h = 24 under `primary_operational` is null, `__available = false`, reason `after_cutoff`. No substitution, and the cutoff is not weakened. `eligible_initial_ml_features` tolerates only this structural null | Owner instruction | Owner changes the availability rule |
+| D-17 | Recent windows are origin-relative (the 24/168 labels ending `cutoff − 1 h`). Same-hour 7-day mean = the 7 most recent same-hour days whose endpoint is `≤ cutoff`. Same-weekday 4-week mean = `T − 168k h`, `k = 1..4`. Std uses ddof = 1. A window is null unless every required hour is usable | Explicit, auditable definitions | — |
+| D-18 | Civil calendar from canonical UTC via `Australia/Melbourne`. Holidays from `holidays` **0.106** (pinned; AU/VIC, substitutes included). Market-time and civil-time fields are separately named | Owner instruction; holiday data affect features | Package update needs a new feature set version |
+| D-19 | Each build re-derives every historical value with an independent per-origin builder on physically truncated input, plus a DuckDB recomputation of lags and `recent_24h_mean`. The build fails on any disagreement or any endpoint after the cutoff | Leakage proof obligation | — |
+| D-20 | Outputs: `data/processed/features/<run>/profile=<p>/year=Y/`, `data/interim/feature_audit/<run>/profile=<p>/year=Y/`, reports in `results/runs/<run>/`. The profile is in the path, a column and the Parquet metadata. Run IDs are never reused | Profiles can never overwrite or be confused | — |
+
 ## Open
 
 | ID | Question | Phase |

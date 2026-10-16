@@ -220,7 +220,7 @@ will never be used to reinterpret the source market intervals.
 │     Validated hourly target  │
 │ Parquet + quality reporting  │
 └──────────────┬───────────────┘
-               │ point-in-time features (planned)
+               │ point-in-time features (2 profiles)
                ▼
 ┌──────────────────────────────┐
 │ Rolling-origin backtesting   │
@@ -261,7 +261,7 @@ The data foundation is complete through the hourly-target stage.
 | Schema, timestamp, and intervention audit | ✅ complete |
 | Canonical five-minute normalisation | ✅ complete |
 | Hourly VIC1 target and quality reporting | ✅ complete; approved 2026-10-16 (tag `data-contract-v1`) |
-| Point-in-time feature builder | 🔜 next |
+| Point-in-time feature builder (two availability profiles) | ✅ complete; under review |
 | Seasonal forecasting baselines | 🔜 planned |
 | LightGBM point and quantile models | 🔜 planned |
 | Frozen final evaluation | 🔜 planned |
@@ -345,6 +345,10 @@ The explicit approval flag prevents an accidental large download.
 # Construct and independently validate the hourly target
 .venv/bin/nem-forecast build-hourly --run-id <new_run_id>
 .venv/bin/nem-forecast validate-data --run-id <run_id>
+
+# Build point-in-time features for both availability profiles, then reconcile in DuckDB
+.venv/bin/nem-forecast build-features --run-id <new_run_id>
+.venv/bin/nem-forecast validate-features --run-id <run_id>
 ```
 
 Raw data, processed data, logs, and run artefacts are intentionally ignored by
@@ -383,18 +387,30 @@ reconstruct values that were revised later.
 
 ## Planned modelling workflow
 
-### 1 · Point-in-time features
+### 1 · Point-in-time features (built; under review)
 
-Each training row will be defined by a forecast origin, target time, and
-horizon. Automated tests will ensure that historical-demand features do not use
-source information from after the origin.
+Each row is keyed by forecast origin, target hour and horizon. The full design
+table has 41,616 rows per profile, and no row is dropped. Features are built
+twice, under two availability profiles:
+- `primary_operational`: the latest usable source interval ends one hour
+  before the origin;
+- `sensitivity_zero_lag`: it ends at the origin. This profile is for
+  sensitivity analysis only.
 
-Planned features include previous-day and previous-week demand, recent
-same-hour summaries, hour, weekday, season, weekend, and Victorian public
-holidays.
+Every historical value records the latest five-minute source endpoint it used.
+Each build checks that this endpoint is no later than the profile cutoff. It
+also re-derives every value with a separate builder that only receives data up
+to the cutoff, and reconciles lags and windows in DuckDB. See
+[`docs/feature_registry.md`](docs/feature_registry.md) and
+`docs/phase_reports/phase_3.md`.
+
+Features: previous-day, two-day and previous-week demand; recent 24-hour and
+168-hour statistics; recent same-hour summaries; market-time and Victorian
+civil-time calendars, including daylight saving and public holidays. No model
+has been trained or evaluated.
 
 Observed future weather will not be used in the primary historical backtest. If
-explored, it will be labelled as a realised-weather oracle—not an operational
+explored, it will be labelled as a realised-weather oracle, not an operational
 forecast.
 
 ### 2 · Baselines before machine learning
@@ -428,6 +444,7 @@ rules have been frozen.
 │   ├── forecast.yaml                 # version-1 forecast contract
 │   ├── aemo_source.yaml              # source and snapshot settings
 │   ├── feature_availability.yaml     # operational/sensitivity profiles
+│   ├── features.yaml                 # registered feature set v1
 │   └── data_snapshots/               # portable source lock manifests
 ├── docs/
 │   ├── forecast_specification.md     # origin, horizon, and target rules
@@ -440,7 +457,7 @@ rules have been frozen.
 │   ├── ingestion/                    # NEMWeb retrieval and source parsing
 │   ├── validation/                   # schema and quality audits
 │   ├── target/                       # hourly target and reconciliation
-│   ├── features/                     # point-in-time features (planned)
+│   ├── features/                     # point-in-time features and leakage checks
 │   ├── models/                       # baselines and ML (planned)
 │   ├── evaluation/                   # backtests and metrics (planned)
 │   ├── monitoring/                   # monitoring (planned)
