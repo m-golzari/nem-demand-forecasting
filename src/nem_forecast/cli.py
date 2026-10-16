@@ -21,8 +21,9 @@ from nem_forecast.config import (
     load_feature_availability_config,
     load_feature_config,
     load_forecast_config,
+    load_lightgbm_protocol,
 )
-from nem_forecast.evaluation import backtest
+from nem_forecast.evaluation import backtest, phase6
 from nem_forecast.evaluation import folds as folds_module
 from nem_forecast.features import build as feature_build
 from nem_forecast.features import compare as feature_compare
@@ -579,4 +580,36 @@ def evaluate_holdout_command(
             "final-holdout evaluation is not implemented before the Phase 7 owner gate; "
             "nothing was read"
         )
+    )
+
+
+# --- Phase 6: LightGBM development run (final holdout guarded) ---------------------
+
+
+@app.command("lightgbm-dev")
+def lightgbm_dev_command(
+    run_id: Annotated[
+        str | None, typer.Option("--run-id", help="New run ID (default: timestamp).")
+    ] = None,
+    root: RootOption = None,
+) -> None:
+    """Nested LightGBM quantile models + calibration candidates on development folds only."""
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    try:
+        paths = ProjectPaths.from_root(root)
+        manifest = phase6.run_phase6(
+            paths, load_backtest_config(paths=paths), load_lightgbm_protocol(paths=paths), run_id
+        )
+    except (
+        ConfigError,
+        ProjectRootError,
+        FileExistsError,
+        ValueError,
+        folds_module.HoldoutAccessError,
+    ) as exc:
+        raise _fail(exc) from exc
+    typer.echo(
+        f"OK: run {manifest['run_id']} | rows per candidate {manifest['rows']['per_candidate']} "
+        f"| max origin {manifest['holdout_guard']['max_origin_predicted']} | "
+        f"{manifest['runtime_seconds']} s | git dirty {manifest['code'].get('dirty')}"
     )

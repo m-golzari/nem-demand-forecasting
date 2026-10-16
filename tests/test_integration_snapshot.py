@@ -222,3 +222,53 @@ def test_benchmark_record_matches_local_phase4_run() -> None:
     ]
     for key, value in record["metrics_full_horizon"].items():
         assert metrics[key] == value
+
+
+def test_real_phase6_inputs_bounded() -> None:
+    """Real data: benchmark verified unchanged, allowlist present, fold-1 windows, NaN lag kept."""
+    import datetime as dt
+
+    import numpy as np
+
+    from nem_forecast.config import load_backtest_config, load_lightgbm_protocol
+    from nem_forecast.evaluation.backtest import TARGET, load_design
+    from nem_forecast.evaluation.folds import build_folds
+    from nem_forecast.evaluation.phase6 import load_benchmark, nested_windows
+    from nem_forecast.models.lightgbm_quantile import (
+        feature_matrix,
+        fit_quantile,
+        lgb_params,
+        predict,
+    )
+
+    bcfg, proto = load_backtest_config(), load_lightgbm_protocol()
+    paths = ProjectPaths.from_root()
+    allow = proto.feature_allowlist.columns
+    try:
+        design, info = load_design(paths, bcfg, sorted({*allow, "eligible_initial_ml_features"}))
+        hybrid, _, bench = load_benchmark(paths, proto)
+    except Exception as exc:
+        pytest.skip(f"real inputs unavailable: {exc}")
+    assert info["holdout_rows_loaded"] == 0 and info["max_origin_loaded"] < "2026-07-01"
+    assert len(hybrid) == 8760 and bench["run_id"] == "phase4_backtest_20261016_dev"
+    design["origin_date"] = design["origin_market"].dt.date
+    w = nested_windows(build_folds(bcfg)[0], proto, bcfg)
+    train = design[
+        (design["origin_date"] <= w.inner_train_last) & design["eligible_initial_ml_features"]
+    ]
+    assert train["origin_date"].max() <= dt.date(2024, 10, 1)
+    res = fit_quantile(
+        feature_matrix(train, allow),
+        train[TARGET].to_numpy(),
+        lgb_params(
+            dict(proto.lightgbm.fixed_params),
+            {"num_leaves": 15, "min_data_in_leaf": 200, "lambda_l2": 0.0},
+            0.5,
+        ),
+        20,
+        allow,
+    )
+    outer = design[design["origin_date"] >= dt.date(2025, 7, 1)]
+    x = feature_matrix(outer[outer["horizon"] == 24], allow)
+    assert np.isnan(x[:, allow.index("lag_24h")]).all()
+    assert np.isfinite(predict(res.booster, x, 20)).all()

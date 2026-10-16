@@ -39,6 +39,11 @@ def crossing_rate(p10: np.ndarray, p50: np.ndarray, p90: np.ndarray) -> float:
     return float(np.mean((p10 > p50) | (p50 > p90)))
 
 
+def crossing_magnitude(p10: np.ndarray, p50: np.ndarray, p90: np.ndarray) -> float:
+    """Mean over all rows of the total order violation max(0, p10-p50) + max(0, p50-p90)."""
+    return float(np.mean(np.maximum(0, p10 - p50) + np.maximum(0, p50 - p90)))
+
+
 def summarise(frame: pd.DataFrame) -> dict[str, Any]:
     """Metrics over rows with an available forecast and actual (p50 = point forecast)."""
     rows = frame[frame["available"] & frame["actual"].notna()]
@@ -64,6 +69,10 @@ def summarise(frame: pd.DataFrame) -> dict[str, Any]:
         "coverage_p10_p90": coverage(p10, p90, y),
         "mean_interval_width_mw": float(np.mean(p90 - p10)),
         "crossing_rate": crossing_rate(p10, p50, p90),
+        "crossing_mean_magnitude_mw": crossing_magnitude(p10, p50, p90),
+        "mean_pinball": float(
+            np.mean([pinball(0.1, p10, y), pinball(0.5, p50, y), pinball(0.9, p90, y)])
+        ),
     }
 
 

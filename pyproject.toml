@@ -24,6 +24,8 @@ dependencies = [
     "holidays>=0.106,<0.107",
     # Phase 4: static diagnostic plots
     "matplotlib>=3.8,<4",
+    # Phase 6: direct quantile gradient boosting
+    "lightgbm>=4.3,<5",
 ]
 
 [project.optional-dependencies]
@@ -74,5 +76,5 @@ files = ["src"]
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["pyarrow", "pyarrow.*"]
+module = ["pyarrow", "pyarrow.*", "lightgbm", "lightgbm.*"]
 ignore_missing_imports = true
