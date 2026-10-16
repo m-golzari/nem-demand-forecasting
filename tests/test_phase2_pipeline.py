@@ -134,3 +134,23 @@ def test_build_refuses_archive_that_does_not_match_lock(project: ProjectPaths) -
     failure = json.loads((project.results_runs / "t2" / "failure_manifest.json").read_text())
     assert failure["status"] == "failed"
     assert not (project.results_runs / "t2" / "run_manifest.json").exists()
+
+
+def test_git_state_lists_uncommitted_paths_exactly(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    import subprocess
+
+    from nem_forecast.target.build import git_state
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    run = lambda *a: subprocess.run(["git", "-C", str(repo), *a], check=True, capture_output=True)  # noqa: E731
+    run("init", "-q")
+    run("config", "user.email", "t@example.com")
+    run("config", "user.name", "t")
+    (repo / "CLAUDE.md").write_text("a")
+    run("add", "CLAUDE.md")
+    run("commit", "-q", "-m", "x")
+    (repo / "CLAUDE.md").write_text("b")  # " M CLAUDE.md": leading blank status column
+    state = git_state(repo)
+    assert state["dirty"] and state["uncommitted_paths"] == ["CLAUDE.md"]
+    assert len(state["commit"]) == 40

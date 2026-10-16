@@ -135,15 +135,16 @@ def git_state(root: Path) -> dict[str, Any]:
     def run(*args: str) -> str:
         return subprocess.run(
             ["git", "-C", str(root), *args], check=True, capture_output=True, text=True
-        ).stdout.strip()
+        ).stdout
 
     try:
-        porcelain = run("status", "--porcelain")
+        # porcelain v1 lines are "XY path"; never strip, the status columns may be blank
+        lines = [line for line in run("status", "--porcelain").splitlines() if line]
         return {
-            "commit": run("rev-parse", "HEAD"),
-            "dirty": bool(porcelain),
-            "uncommitted_entries": len(porcelain.splitlines()) if porcelain else 0,
-            "uncommitted_paths": [line[3:] for line in porcelain.splitlines()],
+            "commit": run("rev-parse", "HEAD").strip(),
+            "dirty": bool(lines),
+            "uncommitted_entries": len(lines),
+            "uncommitted_paths": [line[3:] for line in lines],
         }
     except (OSError, subprocess.CalledProcessError) as exc:
         return {"commit": None, "dirty": None, "error": str(exc)}
