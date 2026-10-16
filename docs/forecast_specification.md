@@ -151,6 +151,16 @@ before any correction.
   originally published.
 - Update cadence: one forecast per market date at the origin.
 - Fallback: a seasonal-naive forecast, identified in every response (Phase 9).
-- Folds, step, minimum training window, final holdout, primary point metric
-  (MAE or WAPE), and seeds: *OPEN (Phase 4)*. They will be frozen in
-  `configs/backtest.yaml` before any holdout access. Random splits are forbidden.
+- **Backtest protocol (frozen 2026-10-16, `configs/backtest.yaml`, D-21…D-29):**
+  - primary profile `primary_operational`;
+  - primary metric MAE (MW); secondary metric aggregate WAPE;
+  - 12 monthly development folds of origins, 2025-07-01 … 2026-06-30,
+    grouped by origin;
+  - **final holdout of origins 2026-07-01 … 2026-09-30, evaluated only with
+    explicit owner approval**;
+  - expanding training using matured outcomes only (origin ≤ fold start − 2
+    days);
+  - 180-day residual calibration window; hybrid weight fitted before it;
+  - bootstrap seed 20261016 with 2,000 daily-block replicates.
+
+  Random splits are forbidden.

@@ -70,6 +70,20 @@ owner may override), **Open** (needs a decision in the named phase).
 | D-19 | Each build re-derives every historical value with an independent per-origin builder on physically truncated input, plus a DuckDB recomputation of lags and `recent_24h_mean`. The build fails on any disagreement or any endpoint after the cutoff | Leakage proof obligation | — |
 | D-20 | Outputs: `data/processed/features/<run>/profile=<p>/year=Y/`, `data/interim/feature_audit/<run>/profile=<p>/year=Y/`, reports in `results/runs/<run>/`. The profile is in the path, a column and the Parquet metadata. Run IDs are never reused | Profiles can never overwrite or be confused | — |
 
+## Phase 4 protocol (frozen 2026-10-16, before any validation metric)
+
+| ID | Decision | Rationale |
+|---|---|---|
+| D-21 | Primary profile `primary_operational` (feature run `phase3_features_20261016_clean`, tag `feature-contract-v1`). Primary metric **MAE (MW)** of the calibrated p50. Secondary metric **aggregate WAPE** = Σ\|f − y\| / Σy | Owner freeze |
+| D-22 | Development: 12 monthly folds of origins, 2025-07-01 … 2026-06-30, grouped by origin (all 24 horizons of an origin in one fold). **Final holdout: origins 2026-07-01 … 2026-09-30, never evaluated in Phase 4.** The development command rejects any origin ≥ 2026-07-01, and holdout rows are filtered at the Parquet read. A separate final-evaluation command refuses without explicit owner approval | Owner freeze; holdout isolation |
+| D-23 | Expanding chronology. For a fold starting at `F`, an origin contributes outcomes only if all 24 of its target hours have latest source endpoint `≤ F − 1 h`. For 00:00 origins this means origin `≤ F − 2 days`, so no origin is split between partitions | Operational maturity rule; origin grouping |
+| D-24 | Hybrid weight `w ∈ {0.00, 0.05, …, 1.00}`, chosen by the primary metric (MAE of the raw hybrid point, h 1–23) on matured origins **before** the 180-day calibration window (expanding). Ties go to the smallest `w`. At h = 24 the hybrid uses an explicitly flagged previous-week fallback | Nested chronology: the weight never sees calibration or validation outcomes |
+| D-25 | Seeds: bootstrap seed 20261016, 2,000 replicates, 95% percentile intervals, blocks = market dates (all 24 horizons of a date resampled together). There is no other randomness | Reproducibility |
+| D-26 | Baselines, each with a strict input allowlist: `previous_day` = `lag_24h` (unavailable at h = 24 under the primary profile, no substitution); `previous_week` = `lag_168h`; `same_weekday_4w` = `same_hour_same_weekday_mean_4w`; `day_week_hybrid`. Targets are attached only in the evaluation layer | Owner specification; leakage control |
+| D-27 | Quantiles by empirical additive residual calibration: `p_q = raw + Q_q(y − raw)`, per baseline × horizon. The residuals come from the 180 most recent matured origins before the fold (minimum 150 samples), with numpy linear interpolation. Calibrated p50 is the declared point forecast. Validation residuals are never pooled | Owner specification |
+| D-28 | Slices: civil evening = Victorian civil start hours 16–20 (`[16:00, 21:00)`). High demand = actual ≥ the fold's **training-only** 90th percentile of matured outcomes (expanding). Seasons by civil month (summer DJF, autumn MAM, winter JJA, spring SON). Day type: holiday > weekend > weekday, from civil fields | Owner freeze |
+| D-29 | Comparisons: (a) a full-horizon operational table, with only models that have all 24 horizons; (b) a common-row table including `previous_day` on identical target rows (h 1–23); (c) coverage tables, so missing forecasts cannot improve rankings. Paired differences are reported with a daily-block bootstrap | Owner specification |
+
 ## Open
 
 | ID | Question | Phase |
@@ -80,7 +94,7 @@ owner may override), **Open** (needs a decision in the named phase).
 | O-04 | ~~Adapter~~ **Resolved 2026-10-14 (Phase 1)**: direct NEMWeb MMSDM monthly archives (daily archives only cover the last ~12 months); `nemosis` not used | — |
 | O-05 | ~~Availability lag~~ **Resolved 2026-10-14 by D-07** (1 h buffer as a modelling assumption; zero-lag sensitivity) | — |
 | O-06 | Calendar features: market time vs Victorian civil time (DST) for hour-of-day; holidays use civil dates | 3 |
-| O-07 | Primary point metric (MAE vs WAPE), folds, holdout, seeds in `configs/backtest.yaml` | 4 |
-| O-08 | How point baselines produce p10/p90 (e.g. fold-fitted empirical residual quantiles) | 4 |
+| O-07 | ~~Metric, folds, holdout, seeds~~ **Resolved 2026-10-16 by D-21…D-25** (`configs/backtest.yaml`) | — |
+| O-08 | ~~Baseline quantiles~~ **Resolved 2026-10-16 by D-27** (empirical additive residual calibration) | — |
 | O-09 | ~~Not a git repository~~ **Resolved 2026-10-14**: git initialised; owner authorised public repo `m-golzari/nem-demand-forecasting` | — |
 | O-10 | ~~Project licence~~ **Resolved 2026-10-14**: MIT for code/docs; external data excluded and governed by source terms. Data redistribution remains forbidden unless separately approved | — |

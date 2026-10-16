@@ -1,0 +1,55 @@
+# Phase 4 backtest protocol (frozen 2026-10-16 BEFORE any validation metric was computed).
+# Changing any value requires a decision-log entry; the final holdout must not be evaluated
+# without explicit owner approval.
+backtest_version: 1
+
+inputs:
+  feature_contract_tag: feature-contract-v1
+  feature_run_id: phase3_features_20261016_clean
+  primary_profile: primary_operational
+  target_column: target_dispatch_totaldemand_hourly_mean_mw
+
+metrics:
+  primary: mae_mw                 # mean |forecast - actual|, MW (calibrated p50 = point)
+  secondary: wape_aggregate       # sum(|forecast - actual|) / sum(actual)
+
+development:
+  first_origin: "2025-07-01"      # 12 monthly folds, grouped by forecast origin
+  last_origin: "2026-06-30"
+  fold_frequency: monthly
+
+holdout:                          # NEVER evaluated in Phase 4 (hard guard in code)
+  first_origin: "2026-07-01"
+  last_origin: "2026-09-30"
+
+training:
+  policy: expanding
+  # An origin may supply outcomes for a fold starting at F only if ALL of its 24 target
+  # hours have latest source endpoint <= F - 1 h (operational rule at the fold's first
+  # origin). For daily 00:00 origins this means origin <= F - 2 days.
+  maturity_lag_hours: 1
+
+calibration:
+  method: empirical_additive_residual   # p_q = raw point + empirical q-quantile of (actual - raw)
+  window_days: 180                      # the 180 most recent matured origins before the fold
+  min_samples_per_horizon: 150
+  quantile_interpolation: linear        # numpy.quantile method
+  quantiles: [0.1, 0.5, 0.9]
+
+hybrid:
+  weight_grid: {start: 0.0, stop: 1.0, step: 0.05}   # 21 values
+  # Nested chronology: weight fitted on matured origins strictly BEFORE the calibration window
+  # (expanding); residual calibration uses only the later 180-day window.
+  weight_fit: expanding_before_calibration_window
+  horizon_24: previous_week_fallback_flagged
+
+slices:
+  evening_civil_start_hours: [16, 17, 18, 19, 20]    # Victorian civil [16:00, 21:00)
+  high_demand_training_quantile: 0.9                 # per fold, training outcomes only
+  seasons_by_civil_month: {summer: [12, 1, 2], autumn: [3, 4, 5], winter: [6, 7, 8], spring: [9, 10, 11]}
+
+bootstrap:
+  block: market_date            # resample origin dates; all 24 horizons of a date kept together
+  replicates: 2000
+  seed: 20261016
+  confidence: 0.95

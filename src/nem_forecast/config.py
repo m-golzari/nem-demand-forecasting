@@ -283,3 +283,141 @@ def load_feature_config(
         raise ConfigError(f"could not parse YAML in {config_path}: {exc}") from exc
     except ValidationError as exc:
         raise ConfigError(f"feature config is invalid:\n{exc}") from exc
+
+
+HOLDOUT_FIRST_ORIGIN = dt.date(2026, 7, 1)
+
+
+class BacktestInputs(_Frozen):
+    feature_contract_tag: Literal["feature-contract-v1"]
+    feature_run_id: str = Field(pattern=r"^[A-Za-z0-9_.-]+$")
+    primary_profile: Literal["primary_operational"]
+    target_column: Literal["target_dispatch_totaldemand_hourly_mean_mw"]
+
+
+class BacktestMetrics(_Frozen):
+    primary: Literal["mae_mw"]
+    secondary: Literal["wape_aggregate"]
+
+
+class DevelopmentWindow(_Frozen):
+    first_origin: dt.date
+    last_origin: dt.date
+    fold_frequency: Literal["monthly"]
+
+    @model_validator(mode="after")
+    def _check(self) -> DevelopmentWindow:
+        if self.last_origin < self.first_origin:
+            raise ValueError("development last_origin precedes first_origin")
+        if self.last_origin >= HOLDOUT_FIRST_ORIGIN:
+            raise ValueError("development origins must end before the final holdout (2026-07-01)")
+        if self.first_origin.day != 1:
+            raise ValueError("monthly folds must start on the first of a month")
+        return self
+
+
+class HoldoutWindow(_Frozen):
+    first_origin: Literal["2026-07-01"]
+    last_origin: Literal["2026-09-30"]
+
+
+class TrainingPolicy(_Frozen):
+    policy: Literal["expanding"]
+    maturity_lag_hours: Literal[1]
+
+
+class CalibrationConfig(_Frozen):
+    method: Literal["empirical_additive_residual"]
+    window_days: Literal[180]
+    min_samples_per_horizon: int = Field(ge=30, le=180)
+    quantile_interpolation: Literal["linear"]
+    quantiles: tuple[float, ...]
+
+    @field_validator("quantiles")
+    @classmethod
+    def _check_q(cls, value: tuple[float, ...]) -> tuple[float, ...]:
+        if value != (0.1, 0.5, 0.9):
+            raise ValueError("calibration quantiles are frozen to [0.1, 0.5, 0.9]")
+        return value
+
+
+class WeightGrid(_Frozen):
+    start: float
+    stop: float
+    step: float
+
+    @model_validator(mode="after")
+    def _check(self) -> WeightGrid:
+        if (self.start, self.stop, self.step) != (0.0, 1.0, 0.05):
+            raise ValueError("hybrid weight grid is frozen to 0.00, 0.05, ..., 1.00")
+        return self
+
+    @property
+    def values(self) -> tuple[float, ...]:
+        return tuple(round(i * self.step, 2) for i in range(round(self.stop / self.step) + 1))
+
+
+class HybridConfig(_Frozen):
+    weight_grid: WeightGrid
+    weight_fit: Literal["expanding_before_calibration_window"]
+    horizon_24: Literal["previous_week_fallback_flagged"]
+
+
+class SliceConfig(_Frozen):
+    evening_civil_start_hours: tuple[int, ...]
+    high_demand_training_quantile: float
+    seasons_by_civil_month: dict[str, tuple[int, ...]]
+
+    @model_validator(mode="after")
+    def _check(self) -> SliceConfig:
+        if self.high_demand_training_quantile != 0.9:
+            raise ValueError("high-demand threshold is frozen to the training 90th percentile")
+        if self.evening_civil_start_hours != (16, 17, 18, 19, 20):
+            raise ValueError("evening slice is frozen to civil starts 16..20 ([16:00, 21:00))")
+        months = sorted(m for ms in self.seasons_by_civil_month.values() for m in ms)
+        if months != list(range(1, 13)):
+            raise ValueError("seasons must partition the 12 months")
+        return self
+
+
+class BootstrapConfig(_Frozen):
+    block: Literal["market_date"]
+    replicates: int = Field(ge=200, le=100_000)
+    seed: int
+    confidence: float
+
+    @field_validator("confidence")
+    @classmethod
+    def _check_conf(cls, value: float) -> float:
+        if value != 0.95:
+            raise ValueError("bootstrap confidence is frozen to 0.95")
+        return value
+
+
+class BacktestConfig(_Frozen):
+    backtest_version: Literal[1]
+    inputs: BacktestInputs
+    metrics: BacktestMetrics
+    development: DevelopmentWindow
+    holdout: HoldoutWindow
+    training: TrainingPolicy
+    calibration: CalibrationConfig
+    hybrid: HybridConfig
+    slices: SliceConfig
+    bootstrap: BootstrapConfig
+
+
+def load_backtest_config(
+    path: str | Path | None = None, paths: ProjectPaths | None = None
+) -> BacktestConfig:
+    paths = paths or ProjectPaths.from_root()
+    config_path = paths.root / (path or "configs/backtest.yaml")
+    if not config_path.is_file():
+        raise ConfigError(f"backtest config not found: {config_path}")
+    try:
+        data = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        return BacktestConfig.model_validate(data)
+    except yaml.YAMLError as exc:
+        raise ConfigError(f"could not parse YAML in {config_path}: {exc}") from exc
+    except ValidationError as exc:
+        raise ConfigError(f"backtest config is invalid:\n{exc}") from exc
