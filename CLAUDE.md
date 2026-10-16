@@ -323,3 +323,136 @@ In chat report: current phase/bottom line, files changed, checks and outcomes,
 assumptions/risks, and next smallest step. End major reports with claims marked
 as verified from documentation, raw data, code, fresh run, inference,
 hypothesis, or not established.
+
+## Token-Efficient Working Protocol
+
+Use the context window efficiently without reducing scientific, coding, or review quality.
+
+### 1. Inspect selectively
+
+- Start with repository manifests, README files, configuration files, entry points, and targeted directory listings.
+- Do not read every source file in full.
+- Use targeted search for symbols, equations, configuration names, file references, and error messages before opening surrounding code.
+- Read only the relevant line ranges of large files.
+- Do not repeatedly reopen unchanged files unless verification requires it.
+
+### 2. Maintain a compact project ledger
+
+Keep a concise working ledger containing:
+
+- objective,
+- current phase,
+- frozen decisions,
+- model/data identities and hashes,
+- completed tasks,
+- unresolved issues,
+- blocked items,
+- next actions,
+- key result-file paths.
+
+Update this ledger instead of restating the full project history in every response. Treat source files and generated artifacts as the authoritative detailed record.
+
+### 3. Write findings to files early
+
+Store substantial outputs in versioned project files rather than retaining long results only in conversation context:
+
+- audit tables,
+- assumptions,
+- provenance,
+- test results,
+- calibration summaries,
+- run manifests,
+- decision records,
+- final reports.
+
+When continuing work, read the compact summary or the relevant section instead of reconstructing history from the entire conversation.
+
+### 4. Avoid redundant narration
+
+- Do not repeat the user’s request, prior instructions, or previously established findings unless needed for a decision.
+- After tool use, report only new findings, material problems, decisions, and next steps.
+- Do not paste large source files or tables into chat when a file path and concise summary are sufficient.
+- Do not provide lengthy play-by-play descriptions of routine commands.
+
+### 5. Use structured execution
+
+Before a major phase, state briefly:
+
+1. what will be checked,
+2. which artifacts will be produced,
+3. what decision or gate follows.
+
+Then execute the work. Avoid prolonged speculative discussion when the issue can be resolved by inspecting files, writing a test, or running a diagnostic.
+
+### 6. Batch independent work
+
+- Combine independent searches, file inspections, tests, and diagnostics where practical.
+- Prefer one targeted script that generates a complete audit table over many small exploratory commands.
+- Reuse parsed data and cached deterministic intermediate artifacts.
+- Do not rerun expensive simulations when valid hashed outputs already exist.
+
+### 7. Preserve quality gates
+
+Token efficiency must never justify skipping:
+
+- source/provenance verification,
+- unit checks,
+- train/validation separation,
+- numerical-convergence checks,
+- mass-balance checks,
+- solver diagnostics,
+- automated tests,
+- reproducible manifests,
+- explicit labeling of assumptions and limitations.
+
+Be concise in narration, not in scientific validation.
+
+### 8. Escalate only decision-relevant uncertainty
+
+Ask the user only when:
+
+- different choices materially change the scientific question,
+- required information is unavailable,
+- compute cost exceeds the agreed budget,
+- a preregistered rule requires a decision,
+- continuing would compromise reproducibility or fairness.
+
+For minor implementation choices, use the documented default, record it, and continue.
+
+### 9. Summarize large evidence compactly
+
+For large result sets, provide:
+
+- a decision table,
+- the most important quantitative findings,
+- failures and caveats,
+- exact artifact paths.
+
+Move exhaustive per-reactor or per-parameter results to CSV/JSON/Markdown files.
+
+### 10. Context checkpoint
+
+Before the context becomes crowded, create or update a compact checkpoint file such as:
+
+`docs/project_checkpoint.md`
+
+It should contain enough information for a fresh session to continue without rereading the full conversation:
+
+- current objective and scope,
+- frozen model/data versions,
+- completed phases,
+- selected configurations,
+- key numerical results,
+- failed tests or unresolved discrepancies,
+- exact commands and paths for the next phase.
+
+### 11. Response style
+
+Default to concise, decision-oriented responses:
+
+- outcome,
+- evidence,
+- caveat,
+- next action.
+
+Expand only when the user requests detail or when technical justification is necessary for correctness.
