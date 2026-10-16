@@ -1,7 +1,19 @@
 # Phase 2 report: canonical VIC1 hourly target and quality reporting
 
-Date: 2026-10-14 · Status: **complete; awaiting owner review.** Phase 3 has not
-started, and `data-contract-v1` has not been created.
+Date: 2026-10-14 · Status: **complete and approved by the owner (2026-10-16).**
+The approved data contracts are tagged `data-contract-v1` (annotated tag on the
+Phase 2 closeout commit).
+
+**Two layers of checks.**
+- `build-hourly` evaluates **16 pipeline-derived quality invariants**
+  (`target/build.py::derived_checks`). Their expected values are derived from
+  the configured window.
+- `validate-data` runs **13 independent re-derivation checks**
+  (`target/reconcile.py::reconcile_run`). These compare the pipeline outputs
+  with a stdlib-csv re-read of the raw archives and a DuckDB re-derivation of
+  selection, hour mapping and means.
+
+All 29 passed.
 
 The target is the **hourly mean of AEMO dispatch `TOTALDEMAND` estimates for
 VIC1, in MW** (column `dispatch_totaldemand_hourly_mean_mw`). It is not
@@ -93,7 +105,7 @@ hard-coded:
 - 12 endpoints per hour;
 - zero incomplete hours.
 
-All 16 derived checks passed. Every reason count is 0.
+All 16 pipeline-derived invariants passed. Every reason count is 0. The 13 independent checks are in the table above.
 
 ## Coverage
 

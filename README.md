@@ -260,7 +260,7 @@ The data foundation is complete through the hourly-target stage.
 | Official AEMO downloader and immutable raw snapshot | ✅ complete |
 | Schema, timestamp, and intervention audit | ✅ complete |
 | Canonical five-minute normalisation | ✅ complete |
-| Hourly VIC1 target and quality reporting | ✅ complete; under review |
+| Hourly VIC1 target and quality reporting | ✅ complete; approved 2026-10-16 (tag `data-contract-v1`) |
 | Point-in-time feature builder | 🔜 next |
 | Seasonal forecasting baselines | 🔜 planned |
 | LightGBM point and quantile models | 🔜 planned |
@@ -444,7 +444,7 @@ rules have been frozen.
 │   ├── models/                       # baselines and ML (planned)
 │   ├── evaluation/                   # backtests and metrics (planned)
 │   ├── monitoring/                   # monitoring (planned)
-│   └── api/                          # prediction service (planned)
+│   └── serving/                      # prediction service (planned)
 ├── tests/                            # offline and marked integration tests
 ├── data/                             # local data; Git-ignored
 ├── results/runs/                     # local run artefacts; Git-ignored
