@@ -389,7 +389,7 @@ Then execute the work. Avoid prolonged speculative discussion when the issue can
 - Combine independent searches, file inspections, tests, and diagnostics where practical.
 - Prefer one targeted script that generates a complete audit table over many small exploratory commands.
 - Reuse parsed data and cached deterministic intermediate artifacts.
-- Do not rerun expensive simulations when valid hashed outputs already exist.
+- Do not rerun expensive data builds or backtests when valid hashed outputs already exist.
 
 ### 7. Preserve quality gates
 
@@ -397,10 +397,10 @@ Token efficiency must never justify skipping:
 
 - source/provenance verification,
 - unit checks,
-- train/validation separation,
-- numerical-convergence checks,
-- mass-balance checks,
-- solver diagnostics,
+- train/validation separation and final-holdout isolation,
+- timestamp, timezone and interval-endpoint checks,
+- point-in-time availability (leakage) checks,
+- row-count and source-to-target reconciliation,
 - automated tests,
 - reproducible manifests,
 - explicit labeling of assumptions and limitations.
@@ -414,7 +414,7 @@ Ask the user only when:
 - different choices materially change the scientific question,
 - required information is unavailable,
 - compute cost exceeds the agreed budget,
-- a preregistered rule requires a decision,
+- a frozen protocol or phase gate requires an owner decision,
 - continuing would compromise reproducibility or fairness.
 
 For minor implementation choices, use the documented default, record it, and continue.
@@ -428,7 +428,7 @@ For large result sets, provide:
 - failures and caveats,
 - exact artifact paths.
 
-Move exhaustive per-reactor or per-parameter results to CSV/JSON/Markdown files.
+Move exhaustive per-fold, per-horizon or per-slice results to CSV/JSON/Markdown files.
 
 ### 10. Context checkpoint
 

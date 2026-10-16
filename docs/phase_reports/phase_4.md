@@ -1,6 +1,6 @@
 # Phase 4 report: seasonal baselines and rolling development backtest
 
-Date: 2026-10-16 · Status: **complete; awaiting owner review.**
+Date: 2026-10-16 · Status: **complete and approved by the owner (2026-10-16).**
 
 - **Data used:** development origins 2025-07-01 … 2026-06-30 only. The final
   holdout (origins ≥ 2026-07-01) was **not loaded, predicted, evaluated or
@@ -155,11 +155,11 @@ Gate results (SLURM 33158750):
 
   | Slice (hybrid, common rows) | Coverage |
   |---|---|
-  | Summer | 0.665 |
+  | Summer | 0.665 (66.5%) |
   | Autumn | 0.920 |
-  | Holidays | 0.686 |
+  | Holidays | 0.686 (68.6%) |
   | High-demand hours | 0.759 |
-  | Fold 7 (2026-01) | 0.587 |
+  | Fold 7 (2026-01) | 0.587 (58.7%) |
   | Folds 10–11 | 0.92–0.93 |
 
 - Intervals are therefore too narrow in summer and on holidays, and too wide
@@ -210,3 +210,25 @@ The manifest records:
 | Hybrid best on full-horizon and common rows | Fresh development run; paired bootstrap CIs exclude 0 |
 | Marginal calibration ≈ nominal; seasonal miscalibration | Fresh development run |
 | Generalisation to the holdout or future | **Not established** (holdout untouched by design) |
+
+## Closeout (2026-10-16, after owner approval)
+
+- **Frozen development benchmark:** `day_week_hybrid`, weight 0.60, run
+  `phase4_backtest_20261016_dev` (code `d72d939`; manifest `140bcab3…`).
+  - The values are recorded in
+    `docs/benchmarks/phase4_development_benchmark.json`.
+  - The README benchmark table and statements are verified against that
+    record by `tests/test_docs.py`.
+  - An integration test checks that the record matches the local run's
+    `metrics.json` and manifest hash.
+- **Calibration results preserved.** The trailing-180-day calibration results
+  and finding D-32 are unchanged. No baseline prediction was changed or
+  rerun.
+- **Rounding correction.** Summer coverage is 0.6647 (66.5%). The earlier
+  wording “summer 0.67” rounded the three-decimal 0.665 a second time. The
+  decision log now says 0.665, and the README states 66.5%, 58.7% (January
+  2026) and 68.6% (holidays). The pushed commit message of `d54ade7` still
+  says 0.67.
+- **Repository-domain correction** (D-34): see `docs/decisions.md`.
+- **Holdout:** never loaded or evaluated. The next protocol (LightGBM or
+  calibration experiments) awaits owner approval.

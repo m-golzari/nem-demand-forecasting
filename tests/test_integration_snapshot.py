@@ -199,3 +199,26 @@ def test_real_backtest_fold1_bounded() -> None:
         assert (cal["n_samples"] >= cfg.calibration.min_samples_per_horizon).all()
     hybrid = next(f for f in fits if f["model"] == "day_week_hybrid")
     assert hybrid["fit_last_origin"] == "2024-12-31" and 0.0 <= hybrid["weight"] <= 1.0
+
+
+def test_benchmark_record_matches_local_phase4_run() -> None:
+    import hashlib
+    import json
+
+    record = json.loads(
+        (
+            ProjectPaths.from_root().root / "docs/benchmarks/phase4_development_benchmark.json"
+        ).read_text()
+    )
+    run = ProjectPaths.from_root().results_runs / record["run_id"]
+    if not (run / "metrics.json").exists():
+        pytest.skip("Phase 4 run not available locally")
+    assert (
+        hashlib.sha256((run / "run_manifest.json").read_bytes()).hexdigest()
+        == record["run_manifest_sha256"]
+    )
+    metrics = json.loads((run / "metrics.json").read_text())["full_horizon_comparison"][
+        "day_week_hybrid"
+    ]
+    for key, value in record["metrics_full_horizon"].items():
+        assert metrics[key] == value

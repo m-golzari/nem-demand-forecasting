@@ -90,7 +90,14 @@ owner may override), **Open** (needs a decision in the named phase).
 |---|---|---|
 | D-30 | Diagnostic plots are small multiples (one panel per model, single-hue highlight over grey context) | No 4-hue reference set passed the all-pairs colour validation |
 | D-31 | The `evaluate-holdout` command exists only as a guarded refusal. Without `--owner-approved-final-evaluation` it raises `HoldoutAccessError`; with the flag it still reads nothing until the Phase 7 owner gate | The final-evaluation path is separate and owner-gated |
-| D-32 | Observed limitation (not tuned): trailing-180-day residual calibration is marginally near-nominal (0.79) but seasonally miscalibrated (summer 0.67, shoulder 0.92). Season-matched calibration is a candidate for a later, separately frozen protocol | Reported, not fixed after seeing development results |
+| D-32 | Observed limitation (not tuned): trailing-180-day residual calibration is marginally near-nominal (0.79) but seasonally miscalibrated (summer 0.665, shoulder 0.92). Season-matched calibration is a candidate for a later, separately frozen protocol | Reported, not fixed after seeing development results |
+
+## Phase 4 closeout (2026-10-16)
+
+| ID | Decision | Rationale |
+|---|---|---|
+| D-33 | **Frozen development benchmark:** `day_week_hybrid` with weight 0.60, run `phase4_backtest_20261016_dev` (code `d72d939`). The values are in `docs/benchmarks/phase4_development_benchmark.json` and are checked against the README by tests. The original trailing-180-day calibration results and D-32 are preserved unchanged. No rerun was done to improve them | Owner approval of Phase 4 |
+| D-34 | **Repository-domain correction.** Commit `144ed3a` (owner CLAUDE.md protocol) had added generic workflow lines phrased in bioprocess terms from another project: "per-reactor" results, "mass-balance checks", "solver diagnostics", "numerical-convergence checks", "expensive simulations" and "a preregistered rule". They were rewritten in NEM terms in the closeout commit. History and tags were not rewritten, so the terms remain visible in `144ed3a`. `tests/test_domain_hygiene.py` now guards against recurrence | Owner instruction; this repository holds NEM project material only |
 
 ## Open
 

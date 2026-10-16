@@ -252,23 +252,19 @@ will never be used to reinterpret the source market intervals.
 
 ## Current status
 
-The data foundation is complete through the hourly-target stage.
+The data foundation and the first forecasting benchmark are complete. No
+machine-learning model has been trained yet.
 
 | Component | Status |
 |---|---|
-| Forecast and target contract | ✅ complete |
-| Official AEMO downloader and immutable raw snapshot | ✅ complete |
-| Schema, timestamp, and intervention audit | ✅ complete |
-| Canonical five-minute normalisation | ✅ complete |
-| Hourly VIC1 target and quality reporting | ✅ complete; approved 2026-10-16 (tag `data-contract-v1`) |
-| Point-in-time feature builder (two availability profiles) | ✅ complete; approved 2026-10-16 (tag `feature-contract-v1`) |
-| Seasonal forecasting baselines (development backtest) | ✅ complete; under review |
-| LightGBM point and quantile models | 🔜 planned |
-| Frozen final evaluation | 🔜 planned |
-| FastAPI service and monitoring | 🔜 planned |
-| Dashboard | 🔜 optional |
+| Source, time, intervention and hourly-target contract | ✅ complete; tagged `data-contract-v1` |
+| Point-in-time feature contract (two availability profiles) | ✅ complete; tagged `feature-contract-v1` |
+| Phase 4 development baseline evaluation | ✅ complete |
+| LightGBM point and quantile models | ⏳ not yet trained |
+| Final holdout (July–September 2026) | 🔒 not loaded or evaluated |
+| FastAPI service, monitoring and dashboard | ⏳ not yet implemented |
 
-### Current data result
+### Data
 
 The locked source snapshot covers January 2022 through September 2026:
 
@@ -282,11 +278,45 @@ The locked source snapshot covers January 2022 through September 2026:
 | Coverage | 2022-01-01 00:00 to 2026-09-30 23:00 market time |
 
 A public lock manifest records the URL, filename, byte size, SHA-256 hash,
-report version, and archive member for every source file. The data themselves
+report version and archive member of every source file. The data themselves
 are downloaded locally and are not committed to Git.
 
-These are **data-pipeline results, not forecasting results**. No model
-performance is claimed yet.
+### Development benchmark: day/week hybrid
+
+The strongest of the simple baselines blends "same hour yesterday" and "same
+hour last week". The weight, 0.60 on yesterday, was chosen inside every fold
+using only earlier data. Its p10 and p90 bounds come from the errors it made on
+earlier, already-observed days.
+
+| Measure | Development result |
+|---|---:|
+| Mean absolute error (MAE) | 459.7 MW |
+| Root mean squared error (RMSE) | 674.3 MW |
+| Weighted absolute percentage error (WAPE) | 9.32% |
+| Bias (forecast − actual) | −21.2 MW |
+| p10–p90 coverage (nominal 80%) | 79.1% |
+| Mean p10–p90 interval width | 1,475 MW |
+
+How to read these numbers:
+
+- They are **development results** from forecast origins July 2025 through
+  June 2026, scored on all 24 hours of every day. The **final July–September
+  2026 holdout remains untouched**.
+- The hybrid improved MAE by about **52 MW** over the four-week same-weekday
+  baseline and about **132 MW** over the previous-week baseline. A paired
+  bootstrap that resamples whole days produced 95% intervals that excluded zero
+  for both differences.
+- Calibration was close to nominal when pooled, but **poor within seasons and
+  special days**. Coverage was **66.5% in summer**, **58.7% in January
+  2026** and **68.6% on public holidays** (target 80%), so the uncertainty
+  bands were too narrow at those times.
+- **No claim is made about performance on the holdout or in the future.**
+
+Details: [`docs/phase_reports/phase_4.md`](docs/phase_reports/phase_4.md),
+[`docs/forecast_specification.md`](docs/forecast_specification.md) and
+[`docs/feature_registry.md`](docs/feature_registry.md). The frozen benchmark
+values are recorded in
+[`docs/benchmarks/phase4_development_benchmark.json`](docs/benchmarks/phase4_development_benchmark.json).
 
 ---
 
@@ -390,7 +420,7 @@ reconstruct values that were revised later.
 
 ## Planned modelling workflow
 
-### 1 · Point-in-time features (built; under review)
+### 1 · Point-in-time features (complete; `feature-contract-v1`)
 
 Each row is keyed by forecast origin, target hour and horizon. The full design
 table has 41,616 rows per profile, and no row is dropped. Features are built
@@ -416,7 +446,7 @@ Observed future weather will not be used in the primary historical backtest. If
 explored, it will be labelled as a realised-weather oracle, not an operational
 forecast.
 
-### 2 · Baselines before machine learning (development backtest done; under review)
+### 2 · Baselines before machine learning (complete; development benchmark frozen)
 
 The baselines are:
 - previous-day same-hour demand (structurally unavailable at horizon 24 under

@@ -1,0 +1,76 @@
+{
+  "benchmark": "day_week_hybrid",
+  "calibration_coverage_p10_p90": {
+    "fold_7_2026_01": 0.5873655913978495,
+    "holiday": 0.68561872909699,
+    "summer": 0.6647342995169082
+  },
+  "calibration_method": "trailing 180-day empirical additive residual quantiles (D-27); seasonal miscalibration D-32",
+  "code_commit": "d72d9398e0ca3f4b8db265291217b4d117bd1344",
+  "development_origins": [
+    "2025-07-01",
+    "2026-06-30"
+  ],
+  "feature_contract_tag": "feature-contract-v1",
+  "final_holdout_evaluated": false,
+  "final_holdout_origins": [
+    "2026-07-01",
+    "2026-09-30"
+  ],
+  "full_horizon_rows": 8760,
+  "hybrid_weight": 0.6,
+  "metrics_full_horizon": {
+    "coverage_p10_p90": 0.7909817351598174,
+    "crossing_rate": 0.0,
+    "mae_mw": 459.7175834570015,
+    "mean_interval_width_mw": 1475.161945722983,
+    "mean_signed_error_mw": -21.232336653348526,
+    "rmse_mw": 674.2985942040991,
+    "wape": 0.09319613222925723
+  },
+  "other_baselines_mae_mw": {
+    "previous_week": 591.9680529870625,
+    "same_weekday_4w": 511.55838221794147
+  },
+  "paired_bootstrap_mae_difference_mw": {
+    "day_week_hybrid-previous_day": {
+      "ci_high": -40.70250841894977,
+      "ci_low": -78.55070912720865,
+      "mae_difference_mw": -59.75814772682157,
+      "row_set": "common_rows_h1_23"
+    },
+    "day_week_hybrid-previous_week": {
+      "ci_high": -104.58560879780245,
+      "ci_low": -159.4249974234208,
+      "mae_difference_mw": -132.2504695300609,
+      "row_set": "full_horizon"
+    },
+    "day_week_hybrid-same_weekday_4w": {
+      "ci_high": -25.5126144027064,
+      "ci_low": -78.23570540881843,
+      "mae_difference_mw": -51.840798760939826,
+      "row_set": "full_horizon"
+    },
+    "previous_week-previous_day": {
+      "ci_high": 120.22541591721252,
+      "ci_low": 35.63628037150091,
+      "mae_difference_mw": 78.24234221758972,
+      "row_set": "common_rows_h1_23"
+    },
+    "previous_week-same_weekday_4w": {
+      "ci_high": 109.93828995404048,
+      "ci_low": 52.86152440068496,
+      "mae_difference_mw": 80.40967076912109,
+      "row_set": "full_horizon"
+    },
+    "same_weekday_4w-previous_day": {
+      "ci_high": 31.074670351585656,
+      "ci_low": -40.39390691104574,
+      "mae_difference_mw": -3.794514157732881,
+      "row_set": "common_rows_h1_23"
+    }
+  },
+  "run_id": "phase4_backtest_20261016_dev",
+  "run_manifest_sha256": "140bcab3e18fa9a9503fd3e642e407b7b8ffbcd9d1d5e8ede8e265d9f70471c8",
+  "status": "frozen development benchmark (owner-approved 2026-10-16)"
+}
