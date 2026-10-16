@@ -261,8 +261,8 @@ The data foundation is complete through the hourly-target stage.
 | Schema, timestamp, and intervention audit | ✅ complete |
 | Canonical five-minute normalisation | ✅ complete |
 | Hourly VIC1 target and quality reporting | ✅ complete; approved 2026-10-16 (tag `data-contract-v1`) |
-| Point-in-time feature builder (two availability profiles) | ✅ complete; under review |
-| Seasonal forecasting baselines | 🔜 planned |
+| Point-in-time feature builder (two availability profiles) | ✅ complete; approved 2026-10-16 (tag `feature-contract-v1`) |
+| Seasonal forecasting baselines (development backtest) | ✅ complete; under review |
 | LightGBM point and quantile models | 🔜 planned |
 | Frozen final evaluation | 🔜 planned |
 | FastAPI service and monitoring | 🔜 planned |
@@ -349,6 +349,9 @@ The explicit approval flag prevents an accidental large download.
 # Build point-in-time features for both availability profiles, then reconcile in DuckDB
 .venv/bin/nem-forecast build-features --run-id <new_run_id>
 .venv/bin/nem-forecast validate-features --run-id <run_id>
+
+# Development backtest of the seasonal baselines (refuses final-holdout origins)
+.venv/bin/nem-forecast backtest-dev --run-id <new_run_id>
 ```
 
 Raw data, processed data, logs, and run artefacts are intentionally ignored by
@@ -413,16 +416,24 @@ Observed future weather will not be used in the primary historical backtest. If
 explored, it will be labelled as a realised-weather oracle, not an operational
 forecast.
 
-### 2 · Baselines before machine learning
+### 2 · Baselines before machine learning (development backtest done; under review)
 
-The first forecasts will be deliberately simple:
-
-- previous-day same-hour demand;
+The baselines are:
+- previous-day same-hour demand (structurally unavailable at horizon 24 under
+  the one-hour availability buffer, and never substituted);
 - previous-week same-hour demand;
-- recent same-hour/day-type mean; and
-- a fixed combination of day and week forecasts.
+- a four-week same-weekday mean;
+- a day/week hybrid with a fold-fitted weight.
 
-These establish whether a more complex model provides genuine value.
+They were compared over 12 monthly development folds, July 2025 to June 2026,
+using MAE, WAPE, pinball loss and interval coverage. Comparisons use identical
+rows only, and coverage is reported alongside, so a missing forecast can never
+improve a ranking. Quantiles come from residuals of earlier, already-observed
+outcomes. The final holdout (July to September 2026) is locked: the
+development command refuses it.
+
+Development results, which are not a claim about future performance, are in
+`docs/phase_reports/phase_4.md`.
 
 ### 3 · Probabilistic LightGBM forecasts
 
@@ -445,6 +456,7 @@ rules have been frozen.
 │   ├── aemo_source.yaml              # source and snapshot settings
 │   ├── feature_availability.yaml     # operational/sensitivity profiles
 │   ├── features.yaml                 # registered feature set v1
+│   ├── backtest.yaml                 # frozen Phase 4 protocol
 │   └── data_snapshots/               # portable source lock manifests
 ├── docs/
 │   ├── forecast_specification.md     # origin, horizon, and target rules
@@ -458,8 +470,8 @@ rules have been frozen.
 │   ├── validation/                   # schema and quality audits
 │   ├── target/                       # hourly target and reconciliation
 │   ├── features/                     # point-in-time features and leakage checks
-│   ├── models/                       # baselines and ML (planned)
-│   ├── evaluation/                   # backtests and metrics (planned)
+│   ├── models/                       # seasonal baselines (ML planned)
+│   ├── evaluation/                   # folds, calibration, metrics, backtest
 │   ├── monitoring/                   # monitoring (planned)
 │   └── serving/                      # prediction service (planned)
 ├── tests/                            # offline and marked integration tests

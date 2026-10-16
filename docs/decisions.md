@@ -84,6 +84,14 @@ owner may override), **Open** (needs a decision in the named phase).
 | D-28 | Slices: civil evening = Victorian civil start hours 16–20 (`[16:00, 21:00)`). High demand = actual ≥ the fold's **training-only** 90th percentile of matured outcomes (expanding). Seasons by civil month (summer DJF, autumn MAM, winter JJA, spring SON). Day type: holiday > weekend > weekday, from civil fields | Owner freeze |
 | D-29 | Comparisons: (a) a full-horizon operational table, with only models that have all 24 horizons; (b) a common-row table including `previous_day` on identical target rows (h 1–23); (c) coverage tables, so missing forecasts cannot improve rankings. Paired differences are reported with a daily-block bootstrap | Owner specification |
 
+## Phase 4 implementation notes (2026-10-16)
+
+| ID | Decision | Rationale |
+|---|---|---|
+| D-30 | Diagnostic plots are small multiples (one panel per model, single-hue highlight over grey context) | No 4-hue reference set passed the all-pairs colour validation |
+| D-31 | The `evaluate-holdout` command exists only as a guarded refusal. Without `--owner-approved-final-evaluation` it raises `HoldoutAccessError`; with the flag it still reads nothing until the Phase 7 owner gate | The final-evaluation path is separate and owner-gated |
+| D-32 | Observed limitation (not tuned): trailing-180-day residual calibration is marginally near-nominal (0.79) but seasonally miscalibrated (summer 0.67, shoulder 0.92). Season-matched calibration is a candidate for a later, separately frozen protocol | Reported, not fixed after seeing development results |
+
 ## Open
 
 | ID | Question | Phase |

@@ -12,9 +12,17 @@ manifests.
 ## Current phase
 - **Phase 3 approved (2026-10-16).** Closeout: clean rebuild designated
   canonical; tag `feature-contract-v1`.
-- **Phase 4 (baselines and rolling development backtest) approved to start.**
-  The final holdout (origins ≥ 2026-07-01) must never be evaluated without
-  explicit owner approval.
+- **Phase 4 complete; awaiting owner review.** Run
+  `phase4_backtest_20261016_dev` (code `d72d939`, clean; manifest
+  `140bcab3…`). The protocol was frozen in `configs/backtest.yaml` (commit
+  `df088d0`) before any metric. The final holdout (origins ≥ 2026-07-01) has
+  never been loaded, and evaluating it needs explicit owner approval.
+- Development headline (identical rows):
+  - hybrid (w = 0.60) MAE 459.7 MW (full horizon);
+  - same_weekday_4w 511.6;
+  - previous_week 592.0;
+  - on common h 1–23 rows, previous_day 525.4 vs hybrid 465.7.
+- p10–p90 coverage is about 0.79 pooled but seasonally miscalibrated (D-32).
 
 ## Frozen decisions and identities
 - Source snapshot `DISPATCHREGIONSUM_2022-01_2026-09_retrieved20261014`:
@@ -32,7 +40,7 @@ manifests.
   - profiles `primary_operational` (cutoff `O − 1 h`) and
     `sensitivity_zero_lag` (cutoff `O`; sensitivity only);
   - manifest SHA-256 `4cb6a3a4…`.
-- Decisions: A-01…A-08, D-01…D-20 in `docs/decisions.md`. Key ones:
+- Decisions: A-01…A-08, D-01…D-32 in `docs/decisions.md`. Key ones:
   - D-06: physical run selected in intervention intervals;
   - D-07: 1 h availability buffer (a modelling assumption);
   - D-16: structural `lag_24h` null at h = 24 under the primary profile.
