@@ -22,6 +22,8 @@ dependencies = [
     "duckdb>=1.0,<2",
     # Phase 3: Victorian public holidays (pinned: holiday data changes features)
     "holidays>=0.106,<0.107",
+    # Phase 4: static diagnostic plots
+    "matplotlib>=3.8,<4",
 ]
 
 [project.optional-dependencies]

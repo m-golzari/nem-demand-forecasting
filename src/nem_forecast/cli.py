@@ -17,10 +17,13 @@ from nem_forecast.config import (
     ConfigError,
     ForecastConfig,
     load_aemo_source_config,
+    load_backtest_config,
     load_feature_availability_config,
     load_feature_config,
     load_forecast_config,
 )
+from nem_forecast.evaluation import backtest
+from nem_forecast.evaluation import folds as folds_module
 from nem_forecast.features import build as feature_build
 from nem_forecast.features import compare as feature_compare
 from nem_forecast.features import reconcile as feature_reconcile
@@ -520,3 +523,60 @@ def compare_feature_runs_command(
     )
     if not result["all_logically_identical"]:
         raise typer.Exit(code=1)
+
+
+# --- Phase 4: development backtest (final holdout guarded) --------------------
+
+
+@app.command("backtest-dev")
+def backtest_dev_command(
+    run_id: Annotated[
+        str | None, typer.Option("--run-id", help="New run ID (default: timestamp).")
+    ] = None,
+    root: RootOption = None,
+) -> None:
+    """Development backtest of baselines (origins before 2026-07-01 only)."""
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    try:
+        paths = ProjectPaths.from_root(root)
+        manifest = backtest.run_backtest(paths, load_backtest_config(paths=paths), run_id)
+    except (
+        ConfigError,
+        ProjectRootError,
+        FileExistsError,
+        ValueError,
+        folds_module.HoldoutAccessError,
+    ) as exc:
+        raise _fail(exc) from exc
+    typer.echo(
+        f"OK: run {manifest['run_id']} | predictions {manifest['rows']['predictions']} | "
+        f"validation origins {manifest['rows']['validation_origins']} | max origin "
+        f"{manifest['holdout_guard']['max_origin_predicted']} | git dirty "
+        f"{manifest['code'].get('dirty')}"
+    )
+
+
+@app.command("evaluate-holdout")
+def evaluate_holdout_command(
+    owner_approved_final_evaluation: Annotated[
+        bool,
+        typer.Option(
+            "--owner-approved-final-evaluation",
+            help="Required: explicit owner approval of the frozen candidate.",
+        ),
+    ] = False,
+) -> None:
+    """Final-holdout evaluation path (origins 2026-07-01 .. 2026-09-30). Guarded."""
+    if not owner_approved_final_evaluation:
+        raise _fail(
+            folds_module.HoldoutAccessError(
+                "final-holdout evaluation requires --owner-approved-final-evaluation and a frozen, "
+                "owner-approved candidate (Phase 7)"
+            )
+        )
+    raise _fail(
+        NotImplementedError(
+            "final-holdout evaluation is not implemented before the Phase 7 owner gate; "
+            "nothing was read"
+        )
+    )

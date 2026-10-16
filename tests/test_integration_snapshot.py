@@ -169,3 +169,33 @@ def test_real_features_bounded_window_match_truncated_reference(profile: str, la
     )
     h24 = wide[wide["horizon"] == 24]
     assert (h24["lag_24h__available"] == (lag == 0)).all()
+
+
+def test_real_backtest_fold1_bounded() -> None:
+    """Real canonical features, fold 1 only: guard, calibration counts, structural h24 gap."""
+    from nem_forecast.config import load_backtest_config
+    from nem_forecast.evaluation.backtest import load_design, run_fold
+    from nem_forecast.evaluation.folds import build_folds
+    from nem_forecast.models.baselines import make_baselines
+
+    cfg = load_backtest_config()
+    paths = ProjectPaths.from_root()
+    cols = sorted(
+        {c for m in make_baselines(cfg.hybrid.weight_grid.values) for c in m.input_columns}
+    )
+    try:
+        design, info = load_design(paths, cfg, cols)
+    except Exception as exc:
+        pytest.skip(f"canonical feature run unavailable: {exc}")
+    assert info["max_origin_loaded"] < "2026-07-01" and info["holdout_rows_loaded"] == 0
+    assert set(design["availability_profile"]) == {"primary_operational"}
+    fold = build_folds(cfg)[0]
+    preds, fits, offsets, _ = run_fold(design, fold, cfg)
+    assert preds["origin_date"].max() == fold.validation_last_origin
+    day = preds[preds["model"] == "previous_day"]
+    assert not day.loc[day["horizon"] == 24, "available"].any()
+    for table in offsets:
+        cal = table[table["calibrated"]]
+        assert (cal["n_samples"] >= cfg.calibration.min_samples_per_horizon).all()
+    hybrid = next(f for f in fits if f["model"] == "day_week_hybrid")
+    assert hybrid["fit_last_origin"] == "2024-12-31" and 0.0 <= hybrid["weight"] <= 1.0
