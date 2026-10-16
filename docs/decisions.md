@@ -111,6 +111,12 @@ owner may override), **Open** (needs a decision in the named phase).
 | D-40 | **Calibration:** quantile-specific additive adjustment `p_τ = raw_τ + Q_τ(y − raw_τ)` per horizon, using numpy linear interpolation and at least 150 samples. *Trailing:* the 180-origin window C. *Season-matched:* matured same-season origins in `[F − 730 d, F − 2 d]` (season of the fold's month; summer DJF, autumn MAM, winter JJA, spring SON), at most 270 most-recent samples per horizon, at least 150, otherwise a deterministic fallback to trailing (recorded). Season residuals are out-of-sample: each same-season month m is predicted by a model refitted only on origins ≤ m_start − 2 d. For LightGBM this uses the fold's selected configuration and iterations; for the hybrid, a weight refitted on that data. **Limitation:** the LightGBM configuration is selected at fold time and applied retrospectively to archive months; outer-fold outcomes are never used | Owner specification; no post-hoc variants |
 | D-41 | **Compared candidates (frozen):** `day_week_hybrid_frozen` (Phase 4 predictions loaded unchanged from `baseline-benchmark-v1`'s run), `day_week_hybrid_season_calibrated`, `lightgbm_raw`, `lightgbm_trailing_calibrated`, `lightgbm_season_calibrated`. Ranking: point = MAE (MW); **uncertainty = mean of p10/p50/p90 pinball loss** (frozen; never coverage alone). All are compared on identical 8,760 development rows with the paired market-date bootstrap | Proper scoring rule fixed in advance |
 
+## Phase 6 development observations (2026-10-16; no selection made)
+
+| ID | Record |
+|---|---|
+| D-42 | Run `phase6_lightgbm_20261016_dev` (code `eb0a734`) completed under the frozen protocol. **No candidate was selected for holdout evaluation**; selection awaits owner review. Observed: LightGBM variants have about 96 MW lower MAE and about 35 MW lower mean pinball than the frozen hybrid (bootstrap CIs exclude 0), with indistinguishable MAE among the three variants. No candidate is conditionally calibrated (high-demand coverage 0.63–0.76; worst folds 0.59–0.72). Season calibration of LightGBM introduced a −76 MW bias. Season calibration had 0 fallbacks |
+
 ## Open
 
 | ID | Question | Phase |
