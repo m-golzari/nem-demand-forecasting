@@ -421,3 +421,146 @@ def load_backtest_config(
         raise ConfigError(f"could not parse YAML in {config_path}: {exc}") from exc
     except ValidationError as exc:
         raise ConfigError(f"backtest config is invalid:\n{exc}") from exc
+
+
+class FeatureAllowlist(_Frozen):
+    historical_demand: tuple[str, ...]
+    availability_indicators: tuple[str, ...]
+    horizon: tuple[Literal["horizon"]]
+    market_calendar: tuple[str, ...]
+    civil_calendar: tuple[str, ...]
+
+    @property
+    def columns(self) -> tuple[str, ...]:
+        return (
+            *self.historical_demand,
+            *self.availability_indicators,
+            *self.horizon,
+            *self.market_calendar,
+            *self.civil_calendar,
+        )
+
+    @model_validator(mode="after")
+    def _check(self) -> FeatureAllowlist:
+        cols = self.columns
+        if len(set(cols)) != len(cols):
+            raise ValueError("feature allowlist has duplicates")
+        if any(
+            c.startswith("target") or "missing_reason" in c or c.startswith("eligible")
+            for c in cols
+        ):
+            raise ValueError("feature allowlist contains a target, lineage or eligibility column")
+        if self.availability_indicators != ("lag_24h__available",):
+            raise ValueError("only the registered lag_24h availability indicator is allowlisted")
+        return self
+
+
+class LightGBMParams(_Frozen):
+    objective: Literal["quantile"]
+    quantiles: tuple[float, ...]
+    fixed_params: dict[str, float | int | bool]
+    max_boosting_rounds: Literal[2000]
+    early_stopping_rounds: Literal[100]
+    candidates: dict[Literal["num_leaves", "min_data_in_leaf", "lambda_l2"], tuple[float, ...]]
+    selection: dict[str, str]
+    refit_rounds: str
+
+    @model_validator(mode="after")
+    def _check(self) -> LightGBMParams:
+        if self.quantiles != (0.1, 0.5, 0.9):
+            raise ValueError("LightGBM quantiles are frozen to 0.1, 0.5, 0.9")
+        if not (
+            self.fixed_params.get("deterministic") and self.fixed_params.get("seed") == 20261016
+        ):
+            raise ValueError("deterministic training with seed 20261016 is frozen")
+        n = 1
+        for values in self.candidates.values():
+            n *= len(values)
+        if n > 12:
+            raise ValueError("at most 12 candidate configurations")
+        return self
+
+    @property
+    def candidate_grid(self) -> list[dict[str, float | int]]:
+        out: list[dict[str, float | int]] = []
+        for leaves in self.candidates["num_leaves"]:
+            for min_leaf in self.candidates["min_data_in_leaf"]:
+                for l2 in self.candidates["lambda_l2"]:
+                    out.append(
+                        {
+                            "num_leaves": int(leaves),
+                            "min_data_in_leaf": int(min_leaf),
+                            "lambda_l2": float(l2),
+                        }
+                    )
+        return out
+
+
+class NestedConfig(_Frozen):
+    tuning_window_days: Literal[90]
+    inner_maturity_gap_days: Literal[2]
+
+
+class SeasonCalibrationConfig(_Frozen):
+    seasons_by_month: Literal["inherited"]
+    season_of_fold: str
+    lookback_days: Literal[730]
+    max_samples_per_horizon: Literal[270]
+    min_samples_per_horizon: Literal[150]
+    fallback: Literal["trailing"]
+
+
+class Phase6CalibrationConfig(_Frozen):
+    adjustment: Literal["quantile_specific_additive"]
+    trailing: dict[Literal["window_days"], Literal[180]]
+    season_matched: SeasonCalibrationConfig
+    min_samples_per_horizon: Literal[150]
+    quantile_interpolation: Literal["linear"]
+
+
+class LightGBMProtocol(_Frozen):
+    protocol_version: Literal[1]
+    inherits: Literal["configs/backtest.yaml"]
+    benchmark_tag: Literal["baseline-benchmark-v1"]
+    benchmark_run_id: Literal["phase4_backtest_20261016_dev"]
+    feature_allowlist: FeatureAllowlist
+    training_rows: Literal["eligible_initial_ml_features_and_target_available"]
+    nested: NestedConfig
+    lightgbm: LightGBMParams
+    calibration: Phase6CalibrationConfig
+    candidates_compared: tuple[str, ...]
+    ranking: dict[str, str]
+
+    @model_validator(mode="after")
+    def _check(self) -> LightGBMProtocol:
+        expected = (
+            "day_week_hybrid_frozen",
+            "day_week_hybrid_season_calibrated",
+            "lightgbm_raw",
+            "lightgbm_trailing_calibrated",
+            "lightgbm_season_calibrated",
+        )
+        if self.candidates_compared != expected:
+            raise ValueError("compared candidates are frozen")
+        if (
+            self.ranking.get("point") != "mae_mw"
+            or self.ranking.get("uncertainty") != "mean_pinball"
+        ):
+            raise ValueError("ranking metrics are frozen to mae_mw and mean_pinball")
+        return self
+
+
+def load_lightgbm_protocol(
+    path: str | Path | None = None, paths: ProjectPaths | None = None
+) -> LightGBMProtocol:
+    paths = paths or ProjectPaths.from_root()
+    config_path = paths.root / (path or "configs/lightgbm.yaml")
+    if not config_path.is_file():
+        raise ConfigError(f"LightGBM protocol not found: {config_path}")
+    try:
+        data = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        return LightGBMProtocol.model_validate(data)
+    except yaml.YAMLError as exc:
+        raise ConfigError(f"could not parse YAML in {config_path}: {exc}") from exc
+    except ValidationError as exc:
+        raise ConfigError(f"LightGBM protocol is invalid:\n{exc}") from exc

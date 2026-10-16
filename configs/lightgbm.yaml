@@ -1,0 +1,92 @@
+# Phase 6 LightGBM development protocol (frozen 2026-10-16 BEFORE LightGBM was installed or
+# any model metric was computed). Inherits configs/backtest.yaml for profile, feature run,
+# outer folds, holdout, maturity rule, metrics, slices, residual quantile interpolation and
+# bootstrap. Changing any value requires a decision-log entry.
+protocol_version: 1
+inherits: configs/backtest.yaml
+benchmark_tag: baseline-benchmark-v1
+benchmark_run_id: phase4_backtest_20261016_dev
+
+# Positive allowlist derived from docs/feature_registry.md (feature set v1). Nothing outside this
+# list ever reaches a model. lag_24h stays missing (NaN) at h = 24 under primary_operational,
+# with its registered availability indicator; it is never zero-filled or substituted.
+feature_allowlist:
+  historical_demand: [lag_24h, lag_48h, lag_168h, recent_24h_mean, recent_24h_std, recent_24h_min,
+                      recent_24h_max, recent_168h_mean, recent_168h_std, same_hour_mean_7d,
+                      same_hour_same_weekday_mean_4w]
+  availability_indicators: [lag_24h__available]
+  horizon: [horizon]
+  market_calendar: [market_hour, market_weekday, market_month, market_day_of_year, market_is_weekend,
+                    market_hour_sin, market_hour_cos, market_weekday_sin, market_weekday_cos,
+                    market_doy_sin, market_doy_cos]
+  civil_calendar: [civil_hour, civil_weekday, civil_utc_offset_hours, civil_is_dst, civil_is_weekend,
+                   civil_is_public_holiday, civil_is_day_before_public_holiday,
+                   civil_is_day_after_public_holiday]
+# All allowlisted columns are passed as numeric (booleans as 0/1); no categorical encoding.
+
+training_rows: eligible_initial_ml_features_and_target_available
+
+# Nested chronology per outer fold F (all windows are whole origins; maturity rule origin <= X - 2 d):
+#   calibration window C = 180 most recent matured origins [F - 181 d, F - 2 d]   (as Phase 4)
+#   tuning window      T = 90 origins immediately before C                         (inner validation)
+#   inner training       origins <= T_start - 2 d                                  (expanding)
+#   calibration model    origins <= C_start - 2 d  -> out-of-sample residuals on C
+#   final model          origins <= F - 2 d        -> predicts the untouched outer month
+nested:
+  tuning_window_days: 90
+  inner_maturity_gap_days: 2
+
+lightgbm:
+  objective: quantile
+  quantiles: [0.1, 0.5, 0.9]
+  fixed_params:
+    learning_rate: 0.05
+    feature_fraction: 1.0
+    bagging_fraction: 1.0
+    bagging_freq: 0
+    max_bin: 255
+    seed: 20261016
+    deterministic: true
+    force_row_wise: true
+    num_threads: 4
+    verbosity: -1
+  max_boosting_rounds: 2000
+  early_stopping_rounds: 100          # on T, metric = pinball loss of the model's own quantile
+  candidates:                         # 12 configurations = 3 x 2 x 2
+    num_leaves: [15, 31, 63]
+    min_data_in_leaf: [50, 200]
+    lambda_l2: [0.0, 10.0]
+  selection:
+    p50: inner MAE on T at each candidate's best iteration; ties -> lowest candidate index
+    p10_p90: same structural configuration as the selected p50; own early-stopped iteration on T
+  refit_rounds: selected best iteration on T (unchanged) for calibration, archive and final models
+
+calibration:
+  adjustment: quantile_specific_additive    # p_tau = raw_tau + Q_tau(y - raw_tau), per horizon
+  trailing:
+    window_days: 180
+  season_matched:
+    seasons_by_month: inherited             # summer DJF, autumn MAM, winter JJA, spring SON
+    season_of_fold: month of the fold's origins
+    lookback_days: 730                      # matured same-season origins in [F - 730 d, F - 2 d]
+    max_samples_per_horizon: 270            # most recent first
+    min_samples_per_horizon: 150
+    fallback: trailing                      # deterministic, recorded per model x horizon x quantile
+    # Out-of-sample residuals: each same-season month m is predicted by a model fitted only on
+    # origins <= m_start - 2 d (hybrid: weight refitted on that data; LightGBM: the fold's
+    # selected configuration and iterations refitted on that data).
+  min_samples_per_horizon: 150
+  quantile_interpolation: linear
+
+candidates_compared:
+  - day_week_hybrid_frozen              # Phase 4 predictions, loaded unchanged from the tagged run
+  - day_week_hybrid_season_calibrated
+  - lightgbm_raw
+  - lightgbm_trailing_calibrated
+  - lightgbm_season_calibrated
+
+ranking:
+  point: mae_mw
+  uncertainty: mean_pinball             # mean of p10, p50, p90 pinball losses (MW); frozen
+  crossing: report raw; no correction applied to candidates; a sorted (rearranged) variant is
+            reported separately with metrics before and after

@@ -142,6 +142,20 @@ before any correction.
   unavailable under the primary profile (null, flagged, not substituted).
 - **Leakage proof:** see `docs/phase_reports/phase_3.md`.
 
+## 6c. Phase 6 LightGBM development protocol (`configs/lightgbm.yaml`, D-35…D-41)
+
+- **Data and evaluation:** frozen before training, using the same profile,
+  features, outer folds, holdout isolation, metrics and comparable-row rules
+  as Phase 4.
+- **Features:** a 32-column positive allowlist from the registry.
+- **Tuning:** nested chronological, with 12 candidates. The p50
+  configuration is chosen by inner MAE; p10 and p90 share its structure.
+- **Models:** direct p10, p50 and p90 quantile models.
+- **Calibration:** trailing and season-matched calibration, each with its
+  frozen rule and deterministic fallback.
+- **Uncertainty ranking:** mean pinball loss.
+- **Final holdout:** evaluation still requires explicit owner approval.
+
 ## 7. History, cadence, folds, holdout
 
 - History: market dates 2022-01-01 to 2026-09-30, i.e. interval ends from
