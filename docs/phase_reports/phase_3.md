@@ -1,6 +1,8 @@
 # Phase 3 report: point-in-time feature dataset
 
-Date: 2026-10-16 · Status: **complete; awaiting owner review.** No model was
+Date: 2026-10-16 · Status: **complete and approved by the owner (2026-10-16).**
+The canonical run and the `feature-contract-v1` tag are recorded in “Closeout”
+at the end of this report. No model was
 trained or evaluated. There was no target-correlation screening, feature
 selection, baseline evaluation, tuning or holdout access.
 

@@ -22,6 +22,7 @@ from nem_forecast.config import (
     load_forecast_config,
 )
 from nem_forecast.features import build as feature_build
+from nem_forecast.features import compare as feature_compare
 from nem_forecast.features import reconcile as feature_reconcile
 from nem_forecast.ingestion import nemweb, snapshot
 from nem_forecast.ingestion.aemo_csv import AemoTable, read_aemo_zip
@@ -495,4 +496,27 @@ def validate_features_command(
         f"| report {target.relative_to(paths.root)}"
     )
     if failed:
+        raise typer.Exit(code=1)
+
+
+@app.command("compare-feature-runs")
+def compare_feature_runs_command(
+    run_a: Annotated[str, typer.Option("--run-a", help="Reference (earlier) Phase 3 run.")],
+    run_b: Annotated[str, typer.Option("--run-b", help="Run to compare.")],
+    root: RootOption = None,
+) -> None:
+    """Compare two Phase 3 runs for byte and logical identity; write JSON into run B."""
+    paths, _ = _source(root)
+    target = paths.results_runs / run_b / f"comparison_vs_{run_a}.json"
+    try:
+        _check_new(target, force=False)
+        result = feature_compare.compare_runs(paths, run_a, run_b)
+    except (FileExistsError, ValueError, KeyError) as exc:
+        raise _fail(exc) from exc
+    write_json_atomic(target, result)
+    typer.echo(
+        f"bytes identical: {result['all_bytes_identical']} | logically identical: "
+        f"{result['all_logically_identical']} | report {target.relative_to(paths.root)}"
+    )
+    if not result["all_logically_identical"]:
         raise typer.Exit(code=1)

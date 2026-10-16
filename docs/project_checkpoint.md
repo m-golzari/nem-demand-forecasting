@@ -10,9 +10,11 @@ manifests.
 - This is a portfolio prototype.
 
 ## Current phase
-- **Phase 3 complete; awaiting owner review.**
-- Next: Phase 4 (baselines and rolling backtest). Not started; needs owner
-  approval.
+- **Phase 3 approved (2026-10-16).** Closeout: clean rebuild designated
+  canonical; tag `feature-contract-v1`.
+- **Phase 4 (baselines and rolling development backtest) approved to start.**
+  The final holdout (origins ≥ 2026-07-01) must never be evaluated without
+  explicit owner approval.
 
 ## Frozen decisions and identities
 - Source snapshot `DISPATCHREGIONSUM_2022-01_2026-09_retrieved20261014`:

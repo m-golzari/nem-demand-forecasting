@@ -55,3 +55,22 @@ def test_build_and_validate_features(project: ProjectPaths) -> None:  # noqa: F8
     check = runner.invoke(app, ["validate-features", "--run-id", "p3", *root])
     assert check.exit_code == 0, check.output
     assert runner.invoke(app, ["build-features", "--run-id", "p3", *root]).exit_code == 1
+
+
+def test_rebuild_is_logically_identical(project: ProjectPaths) -> None:  # noqa: F811
+    root = ["--root", str(project.root)]
+    assert runner.invoke(app, ["aemo-snapshot-lock", "--snapshot", SNAP, *root]).exit_code == 0
+    assert runner.invoke(app, ["build-hourly", "--run-id", "p2", *root]).exit_code == 0
+    for name in ("feature_availability.yaml", "features.yaml"):
+        shutil.copy(REPO_ROOT / "configs" / name, project.configs / name)
+    cfg = project.configs / "features.yaml"
+    cfg.write_text(re.sub(r"input_phase2_run_id: .*", "input_phase2_run_id: p2", cfg.read_text()))
+    for rid in ("a", "b"):
+        assert runner.invoke(app, ["build-features", "--run-id", rid, *root]).exit_code == 0
+    result = runner.invoke(app, ["compare-feature-runs", "--run-a", "a", "--run-b", "b", *root])
+    assert result.exit_code == 0, result.output
+    report = json.loads((project.results_runs / "b" / "comparison_vs_a.json").read_text())
+    assert report["all_logically_identical"] and not report["all_bytes_identical"]
+    ds = report["datasets"]["primary_operational/features"]
+    assert ds["metadata_keys_differing"] == ["nem_forecast.run_id"]
+    assert ds["logical_hash"][0] == ds["logical_hash"][1]
