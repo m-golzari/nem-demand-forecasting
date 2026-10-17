@@ -1,6 +1,6 @@
 # Phase 6 report: LightGBM development run (development folds only)
 
-Date: 2026-10-16 · Status: **complete; awaiting owner review.**
+Date: 2026-10-16 · Status: **complete and approved by the owner (2026-10-17).** Candidate: `lightgbm_trailing_calibrated` (D-43); fallback/benchmark `day_week_hybrid_frozen`.
 
 - **Holdout:** the final holdout (origins ≥ 2026-07-01) was **not loaded,
   predicted or evaluated**, and `evaluate-holdout` was not executed.
@@ -200,3 +200,86 @@ Gain reflects how the trees split. It does not measure effects on demand.
 | LightGBM lower MAE and mean pinball than the frozen hybrid on development rows | Fresh run; paired bootstrap CIs exclude 0 |
 | Any candidate conditionally calibrated | **Not established**: conditional coverage gaps shown above |
 | Generalisation to the holdout or future | **Not established** |
+
+## Closeout diagnostic (2026-10-17; explanatory only, D-44)
+
+- **Scope:** stored Phase 6 development predictions and offsets
+  (hash-verified), plus pre-holdout design rows for level comparisons
+  (`holdout_rows_loaded` 0).
+- **Not done:** no retraining and no new method or candidate.
+- **Run:** `phase6_diagnostic_20261017b`, command `nem-forecast
+  lightgbm-diagnostic`. A first run, `phase6_diagnostic_20261017`, carried
+  a mis-specified informational check (below) and was superseded.
+
+**Formula verification.**
+- Every stored calibrated quantile equals raw + stored offset exactly (maximum
+  difference 0.0) for trailing LightGBM, season LightGBM and the season
+  hybrid.
+- Raw LightGBM equals its raw columns.
+- For every fold and model, calibrated bias = raw bias + mean applied p50
+  offset (identity error ≤ 6e-14).
+- Season samples were 150–270, all from the season source; trailing samples
+  were 180.
+- Hand-calculated examples: `tests/test_phase6.py`,
+  `tests/test_phase6_diagnostic.py`.
+- The first run's check “trailing offsets ordered” was **mis-specified**.
+  Quantile-specific offsets are added to different raw quantiles, so they need
+  not be ordered; only the calibrated quantiles must be ordered (crossing
+  0.87%, reported). It is now an informational fraction (0.30) and is not
+  treated as a defect.
+
+**Paired market-date bootstrap among LightGBM variants** (A − B; 95% CI;
+seed 20261016; 2,000 replicates):
+
+| A − B | Mean pinball | MAE | Bias (MW) | Coverage | Width (MW) | Lower-miss | Upper-miss |
+|---|---|---|---|---|---|---|---|
+| raw − trailing | +0.74 [−0.27, +1.80] | +0.45 [−2.06, +2.86] | +2.7 [+1.4, +4.1] | −0.068 [−0.077, −0.059] | −162.6 [−169.2, −155.8] | +0.034 | +0.034 |
+| raw − season | +1.50 [−0.17, +3.19] | −0.18 [−4.85, +4.64] | +44.6 [+41.0, +48.3] | −0.094 | −227.4 | +0.061 | +0.032 |
+| trailing − season | +0.76 [−0.46, +2.04] | −0.63 [−4.42, +3.45] | +41.9 [+37.8, +46.0] | −0.026 [−0.035, −0.017] | −64.8 [−75.4, −54.4] | +0.028 [+0.020, +0.035] | −0.002 [−0.007, +0.003] |
+
+The three variants have **indistinguishable mean pinball and MAE**. They
+differ in bias, width and coverage.
+
+**Tail misses (nominal 10% each).**
+
+| Model | Lower (y < p10) | Upper (y > p90) |
+|---|---|---|
+| trailing | 10.3% | 11.6% |
+| season | 7.5% | 11.8% |
+| raw | 13.6% | 15.1% |
+| hybrid frozen | 10.5% | 10.4% |
+
+**Season-calibration bias explained (not a defect).**
+- Season p50 offsets were strongly negative in folds 3, 4, 6, 7 and 8
+  (−56 to −98 MW; fold 5 −37), against trailing −26 to +16 MW.
+- The out-of-sample archive models are refitted at each prior same-season
+  month start, so they carry year-to-year level changes. For example, January
+  demand fell from 4,563 MW (2023) to 4,221 MW (2024), then recovered to
+  4,618 MW (2026).
+- Older-vintage over-forecasts, i.e. negative residuals, shift current
+  forecasts down.
+
+**May–June 2026 deterioration explained (combination; not a defect).**
+
+For `lightgbm_trailing_calibrated`, folds 11–12 against folds 1–10:
+- **Point error:** MAE fell, 375 → 303 MW (×0.81). Larger point errors are
+  **not** the cause.
+- **Intervals:** width shrank to ×0.75 (1,219 → 910 MW). The trailing
+  180-origin window spans lower-variance months.
+- **Bias:** −25 → −83 MW (under-forecasting). June 2026 had the highest June
+  mean in the record (5,936 MW).
+- **Asymmetric misses:** upper-tail misses rose from 10.4% to 17.7%, while
+  lower-tail misses stayed at 10.2% → 10.5%.
+- **By horizon:** worst overnight and early morning, e.g. June h4 coverage
+  0.43 with width 377 MW, while midday horizons (h12–h18) stay at
+  0.74–0.93.
+
+**Code and data audit.**
+- Every development row is eligible and has a target.
+- There are no missing allowlisted features except the structural
+  `lag_24h` at h = 24.
+- Late folds have the expected civil offset (UTC+10; no DST in May–June).
+- Fold, window and season-month logic are covered by tests.
+
+**No correctness defect was found. `lightgbm_trailing_calibrated` remains
+selected (D-45).**

@@ -124,6 +124,8 @@ owner may override), **Open** (needs a decision in the named phase).
 | D-43 | **Provisional selection:** `lightgbm_trailing_calibrated` is the candidate for the final gate, with `day_week_hybrid_frozen` as the required fallback and benchmark. Rationale: lowest development MAE (362.8 MW) and WAPE (7.35%); mean pinball 116.0 MW, close to season calibration's 115.3; smaller bias than season calibration (−34.5 vs −76.3 MW); simpler recency-based calibration; about 97 MW (21%) MAE improvement over the frozen hybrid. This does **not** claim conditional calibration | Owner selection |
 | D-44 | **The diagnostic is explanatory only.** It uses only the existing Phase 6 development predictions and offsets: no retraining, feature change, calibration-window change, new candidate, new calibration method or holdout access. `lightgbm_trailing_calibrated` stays selected unless a correctness defect is found. If one is found, work stops and it is reported before anything is changed or rerun | Owner instruction; prevents post-hoc method shopping |
 
+| D-45 | **Diagnostic outcome:** no correctness defect (formula identities exact; data complete). The season-calibration bias comes from level drift across archive vintages; the May–June deterioration combines narrower trailing intervals, a negative bias and upper-tail misses. Selection D-43 stands. Portable record: `docs/benchmarks/phase6_lightgbm_development_candidate.json` | Explanatory diagnostic run `phase6_diagnostic_20261017b` |
+
 ## Open
 
 | ID | Question | Phase |

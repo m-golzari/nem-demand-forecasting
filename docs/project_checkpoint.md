@@ -24,7 +24,8 @@ manifests.
   - on common h 1–23 rows, previous_day 525.4 vs hybrid 465.7.
 - p10–p90 coverage is 0.791 pooled but seasonally miscalibrated (D-32: summer 0.665, January 2026 0.587, holidays 0.686).
 - Phase 4 frozen benchmark tagged `baseline-benchmark-v1` (`3268ee7`). Domain-hygiene test is exception-free.
-- **Phase 6 LightGBM development run complete; awaiting owner review.** Protocol frozen in `configs/lightgbm.yaml` (`24e9a28`, before LightGBM was installed). Run `phase6_lightgbm_20261016_dev` (code `eb0a734`, clean; manifest `a81ae775…`).
+- **Phase 6 LightGBM development approved (2026-10-17).** Selected candidate `lightgbm_trailing_calibrated`; fallback `day_week_hybrid_frozen` (D-43). Diagnostic found no defect (D-45). Next: tag `lightgbm-development-v1`, then the final pre-holdout artefact. Holdout evaluation still requires explicit owner approval.
+- Earlier status: Protocol frozen in `configs/lightgbm.yaml` (`24e9a28`, before LightGBM was installed). Run `phase6_lightgbm_20261016_dev` (code `eb0a734`, clean; manifest `a81ae775…`).
   - Development MAE: hybrid 459.7; LightGBM raw 363.2, trailing 362.8, season 363.4 MW.
   - Mean pinball: hybrid 151.6; LightGBM 116.8 / 116.0 / 115.3.
   - No candidate is conditionally calibrated (D-42).
@@ -47,7 +48,7 @@ manifests.
   - profiles `primary_operational` (cutoff `O − 1 h`) and
     `sensitivity_zero_lag` (cutoff `O`; sensitivity only);
   - manifest SHA-256 `4cb6a3a4…`.
-- Decisions: A-01…A-08, D-01…D-42 in `docs/decisions.md`. Key ones:
+- Decisions: A-01…A-08, D-01…D-45 in `docs/decisions.md`. Key ones:
   - D-06: physical run selected in intervention intervals;
   - D-07: 1 h availability buffer (a modelling assumption);
   - D-16: structural `lag_24h` null at h = 24 under the primary profile.

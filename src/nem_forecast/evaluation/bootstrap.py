@@ -46,3 +46,42 @@ def paired_block_bootstrap(
         "replicates": replicates,
         "seed": seed,
     }
+
+
+def paired_block_bootstrap_mean(
+    values_a: pd.Series,
+    values_b: pd.Series,
+    dates: pd.Series,
+    replicates: int,
+    seed: int,
+    confidence: float = 0.95,
+) -> dict[str, Any]:
+    """mean(A) - mean(B) for row-level quantities (signed errors, indicators, widths, losses).
+
+    Unlike :func:`paired_block_bootstrap`, values are used as given (no absolute value).
+    Whole market dates are resampled with replacement.
+    """
+    frame = pd.DataFrame(
+        {
+            "a": values_a.to_numpy(dtype=float),
+            "b": values_b.to_numpy(dtype=float),
+            "date": dates.to_numpy(),
+        }
+    )
+    if frame[["a", "b"]].isna().any().any():
+        raise ValueError("paired bootstrap requires both values on identical rows")
+    per_date = frame.groupby("date", sort=True).agg(a=("a", "sum"), b=("b", "sum"), n=("a", "size"))
+    sums_a, sums_b, n = (per_date[c].to_numpy(dtype=float) for c in ("a", "b", "n"))
+    rng = np.random.default_rng(seed)
+    idx = rng.integers(0, len(per_date), size=(replicates, len(per_date)))
+    diff = (sums_a[idx].sum(axis=1) - sums_b[idx].sum(axis=1)) / n[idx].sum(axis=1)
+    alpha = (1 - confidence) / 2
+    return {
+        "difference": float((sums_a.sum() - sums_b.sum()) / n.sum()),
+        "ci_low": float(np.quantile(diff, alpha)),
+        "ci_high": float(np.quantile(diff, 1 - alpha)),
+        "dates": len(per_date),
+        "rows": len(frame),
+        "replicates": replicates,
+        "seed": seed,
+    }

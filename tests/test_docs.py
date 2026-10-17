@@ -63,20 +63,7 @@ def _benchmark() -> dict:
 
 def test_readme_benchmark_numbers_match_frozen_record() -> None:
     b = _benchmark()
-    m = b["metrics_full_horizon"]
     status = README.split("## Current status", 1)[1].split("## Quickstart", 1)[0]
-    expected = [
-        f"| Mean absolute error (MAE) | {m['mae_mw']:.1f} MW |",
-        f"| Root mean squared error (RMSE) | {m['rmse_mw']:.1f} MW |",
-        f"| Weighted absolute percentage error (WAPE) | {100 * m['wape']:.2f}% |",
-        f"| Bias (forecast \u2212 actual) | {m['mean_signed_error_mw']:.1f} MW |".replace(
-            "-", "\u2212"
-        ),
-        f"| p10\u2013p90 coverage (nominal 80%) | {100 * m['coverage_p10_p90']:.1f}% |",
-        f"| Mean p10\u2013p90 interval width | {m['mean_interval_width_mw']:,.0f} MW |",
-    ]
-    for line in expected:
-        assert line in status, line
     boot = b["paired_bootstrap_mae_difference_mw"]
     vs_same = boot["day_week_hybrid-same_weekday_4w"]
     vs_week = boot["day_week_hybrid-previous_week"]
@@ -87,11 +74,10 @@ def test_readme_benchmark_numbers_match_frozen_record() -> None:
     assert f"**{100 * cal['summer']:.1f}% in summer**" in status
     assert f"**{100 * cal['fold_7_2026_01']:.1f}% in January" in status
     assert f"**{100 * cal['holiday']:.1f}% on public holidays**" in status
-    assert f"{b['hybrid_weight']:.2f} on yesterday" in status
+    assert f"weight of {b['hybrid_weight']:.2f} on yesterday" in status
     assert b["final_holdout_evaluated"] is False
     assert b["development_origins"] == ["2025-07-01", "2026-06-30"]
-    assert "July 2025 through" in status and "June 2026" in status
-    assert "holdout remains untouched" in status
+    assert "July 2025 to June 2026" in status
 
 
 def test_readme_status_rows() -> None:
@@ -99,8 +85,8 @@ def test_readme_status_rows() -> None:
     for needle in (
         "tagged `data-contract-v1`",
         "tagged `feature-contract-v1`",
-        "Phase 4 development baseline evaluation | ✅ complete",
-        "LightGBM point and quantile models | ⏳ not yet trained",
+        "Phase 4 development baseline evaluation | ✅ complete; tagged `baseline-benchmark-v1`",
+        "LightGBM development evaluation | ✅ complete",
         "not loaded or evaluated",
         "monitoring and dashboard | ⏳ not yet implemented",
     ):
@@ -116,5 +102,43 @@ def test_tags_named_in_readme_exist_locally_when_git_available() -> None:
         ).stdout.split()
     except (OSError, subprocess.CalledProcessError):
         return
-    for tag in ("data-contract-v1", "feature-contract-v1"):
+    for tag in ("data-contract-v1", "feature-contract-v1", "baseline-benchmark-v1"):
         assert tag in README and (tag in tags or not tags)
+
+
+CANDIDATE = REPO_ROOT / "docs" / "benchmarks" / "phase6_lightgbm_development_candidate.json"
+
+
+def _candidate() -> dict:
+    import json
+
+    return json.loads(CANDIDATE.read_text(encoding="utf-8"))
+
+
+def test_readme_lightgbm_table_and_claims_match_candidate_record() -> None:
+    c, b = _candidate(), _benchmark()
+    status = README.split("## Current status", 1)[1].split("## Quickstart", 1)[0]
+    cm, bm = c["metrics"], c["benchmark_metrics"]
+    for name, m in (("Frozen day/week hybrid", bm), ("LightGBM, trailing-calibrated", cm)):
+        row = (
+            f"| {name} | {m['mae_mw']:.1f} MW | {100 * m['wape']:.2f}% | "
+            f"{m['mean_pinball']:.1f} MW | {100 * m['coverage_p10_p90']:.1f}% |"
+        )
+        assert row in status, row
+    assert bm["mae_mw"] == b["metrics_full_horizon"]["mae_mw"]  # same frozen benchmark
+    imp = c["improvement_vs_benchmark"]
+    assert f"about **{imp['mae_mw']:.0f} MW, or {imp['mae_percent']:.0f}%**" in status
+    assert imp["mae_bootstrap_hybrid_minus_candidate"]["ci_low"] > 0  # interval excludes zero
+    lim = c["conditional_calibration_limitations"]
+    assert f"**{100 * lim['coverage_high_demand']:.1f}%**" in status
+    assert f"**{100 * lim['coverage_fold_11_2026_05']:.1f}%** in May 2026" in status
+    assert f"**{100 * lim['coverage_fold_12_2026_06']:.1f}%** in June 2026" in status
+    assert c["holdout_boundary"] == {
+        "first_origin": "2026-07-01",
+        "last_origin": "2026-09-30",
+        "holdout_rows_loaded": 0,
+        "evaluated": False,
+    }
+    assert "holdout\n  remains untouched" in status
+    assert c["rows_identical"] == 8760 and "same 8,760 hourly forecasts" in status
+    assert c["candidate"] == "lightgbm_trailing_calibrated"

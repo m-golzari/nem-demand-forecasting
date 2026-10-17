@@ -252,16 +252,17 @@ will never be used to reinterpret the source market intervals.
 
 ## Current status
 
-The data foundation and the first forecasting benchmark are complete. No
-machine-learning model has been trained yet.
+The data foundation, the simple benchmark and a first machine-learning model
+are complete on development data. The final test on unseen data has not been
+run.
 
 | Component | Status |
 |---|---|
 | Source, time, intervention and hourly-target contract | ✅ complete; tagged `data-contract-v1` |
 | Point-in-time feature contract (two availability profiles) | ✅ complete; tagged `feature-contract-v1` |
-| Phase 4 development baseline evaluation | ✅ complete |
-| LightGBM point and quantile models | ⏳ not yet trained |
-| Final holdout (July–September 2026) | 🔒 not loaded or evaluated |
+| Phase 4 development baseline evaluation | ✅ complete; tagged `baseline-benchmark-v1` |
+| LightGBM development evaluation | ✅ complete; candidate tagged `lightgbm-development-v1` |
+| Final holdout (July–September 2026) | 🔒 not loaded or evaluated; awaits owner approval |
 | FastAPI service, monitoring and dashboard | ⏳ not yet implemented |
 
 ### Data
@@ -281,41 +282,46 @@ A public lock manifest records the URL, filename, byte size, SHA-256 hash,
 report version and archive member of every source file. The data themselves
 are downloaded locally and are not committed to Git.
 
-### Development benchmark: day/week hybrid
+### Development results
 
-The strongest of the simple baselines blends "same hour yesterday" and "same
-hour last week". The weight, 0.60 on yesterday, was chosen inside every fold
-using only earlier data. Its p10 and p90 bounds come from the errors it made on
-earlier, already-observed days.
+Two forecasters were scored on the **same 8,760 hourly forecasts**: every hour
+of every day from July 2025 to June 2026.
+- The **frozen day/week hybrid** blends "same hour yesterday" and "same hour
+  last week", with a weight of 0.60 on yesterday.
+- **LightGBM** is a gradient-boosted tree model. It learns from the same
+  past-demand and calendar information, and its uncertainty bands come from
+  its errors on earlier, already-observed days.
 
-| Measure | Development result |
-|---|---:|
-| Mean absolute error (MAE) | 459.7 MW |
-| Root mean squared error (RMSE) | 674.3 MW |
-| Weighted absolute percentage error (WAPE) | 9.32% |
-| Bias (forecast − actual) | −21.2 MW |
-| p10–p90 coverage (nominal 80%) | 79.1% |
-| Mean p10–p90 interval width | 1,475 MW |
+| Development model | MAE | WAPE | Mean pinball | p10–p90 coverage |
+|---|---:|---:|---:|---:|
+| Frozen day/week hybrid | 459.7 MW | 9.32% | 151.6 MW | 79.1% |
+| LightGBM, trailing-calibrated | 362.8 MW | 7.35% | 116.0 MW | 78.1% |
 
 How to read these numbers:
 
-- They are **development results** from forecast origins July 2025 through
-  June 2026, scored on all 24 hours of every day. The **final July–September
-  2026 holdout remains untouched**.
-- The hybrid improved MAE by about **52 MW** over the four-week same-weekday
-  baseline and about **132 MW** over the previous-week baseline. A paired
-  bootstrap that resamples whole days produced 95% intervals that excluded zero
-  for both differences.
-- Calibration was close to nominal when pooled, but **poor within seasons and
-  special days**. Coverage was **66.5% in summer**, **58.7% in January
-  2026** and **68.6% on public holidays** (target 80%), so the uncertainty
-  bands were too narrow at those times.
-- **No claim is made about performance on the holdout or in the future.**
+- LightGBM improved MAE by about **97 MW, or 21%**, on identical development
+  rows. A paired bootstrap that resamples whole days produced a 95% interval
+  that excluded zero.
+- Its uncertainty is still **conditionally miscalibrated**, especially during
+  high demand (**71.3%** of actual values fell inside the 80% band) and in the
+  most recent folds (**74.7%** in May 2026 and **68.9%** in June 2026). Pooled
+  coverage near 80% hides these gaps.
+- Among the simple baselines, the hybrid improved MAE by about **52 MW** over
+  the four-week same-weekday baseline and about **132 MW** over the
+  previous-week baseline (bootstrap intervals excluded zero).
+- The hybrid's own bands were also miscalibrated: about **66.5% in summer**,
+  **58.7% in January 2026** and **68.6% on public holidays**.
+- These are **development results**. The **July–September 2026 holdout
+  remains untouched**, and no claim is made about holdout or future
+  performance.
 
-Details: [`docs/phase_reports/phase_4.md`](docs/phase_reports/phase_4.md),
+Details:
+[`docs/phase_reports/phase_6_lightgbm_development.md`](docs/phase_reports/phase_6_lightgbm_development.md),
+[`docs/phase_reports/phase_4.md`](docs/phase_reports/phase_4.md),
 [`docs/forecast_specification.md`](docs/forecast_specification.md) and
-[`docs/feature_registry.md`](docs/feature_registry.md). The frozen benchmark
-values are recorded in
+[`docs/feature_registry.md`](docs/feature_registry.md). The frozen values are in
+[`docs/benchmarks/phase6_lightgbm_development_candidate.json`](docs/benchmarks/phase6_lightgbm_development_candidate.json)
+and
 [`docs/benchmarks/phase4_development_benchmark.json`](docs/benchmarks/phase4_development_benchmark.json).
 
 ---
@@ -465,15 +471,17 @@ development command refuses it.
 Development results, which are not a claim about future performance, are in
 `docs/phase_reports/phase_4.md`.
 
-### 3 · Probabilistic LightGBM forecasts
+### 3 · Probabilistic LightGBM forecasts (development complete; candidate frozen)
 
-LightGBM will produce p10, p50, and p90 estimates. Rolling-origin evaluation
-will report MAE, RMSE, WAPE, bias, peak-period error, quantile loss, interval
-coverage and width, and performance across horizons, hours, seasons, and demand
-levels.
+LightGBM produces p10, p50 and p90 estimates from a fixed list of 32 approved
+inputs. It is tuned only on earlier data inside each monthly fold, and its
+uncertainty bands are adjusted using its errors on the most recent 180
+already-observed days. On development data it beats the frozen hybrid on
+accuracy, but its bands are still too narrow during high demand and in the
+most recent months.
 
-The final holdout period will remain untouched until the model and evaluation
-rules have been frozen.
+The final holdout period stays untouched until the owner approves a single,
+pre-registered evaluation.
 
 ---
 
@@ -523,7 +531,8 @@ rules have been frozen.
   of what was visible at every past forecast origin.
 - The project currently covers only `VIC1`.
 - No weather information is included in the primary model design at this stage.
-- No forecasting model has yet been trained or evaluated.
+- Models have been evaluated only on development data; the final holdout has not been evaluated.
+- Forecast uncertainty is conditionally miscalibrated (high demand, recent months).
 - This is a portfolio project, not a system operated by AEMO, an energy
   retailer, or a network business.
 

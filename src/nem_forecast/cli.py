@@ -23,7 +23,7 @@ from nem_forecast.config import (
     load_forecast_config,
     load_lightgbm_protocol,
 )
-from nem_forecast.evaluation import backtest, phase6
+from nem_forecast.evaluation import backtest, phase6, phase6_diagnostic
 from nem_forecast.evaluation import folds as folds_module
 from nem_forecast.features import build as feature_build
 from nem_forecast.features import compare as feature_compare
@@ -613,3 +613,33 @@ def lightgbm_dev_command(
         f"| max origin {manifest['holdout_guard']['max_origin_predicted']} | "
         f"{manifest['runtime_seconds']} s | git dirty {manifest['code'].get('dirty')}"
     )
+
+
+@app.command("lightgbm-diagnostic")
+def lightgbm_diagnostic_command(
+    phase6_run: Annotated[str, typer.Option("--phase6-run", help="Phase 6 development run ID.")],
+    run_id: Annotated[str, typer.Option("--run-id", help="New diagnostic run ID.")],
+    root: RootOption = None,
+) -> None:
+    """Explanatory-only diagnostic of stored Phase 6 predictions (no refit, no holdout)."""
+    try:
+        paths = ProjectPaths.from_root(root)
+        out_dir = paths.results_runs / run_id
+        if out_dir.exists():
+            raise FileExistsError(f"{out_dir} exists; run IDs are never reused")
+        result = phase6_diagnostic.run_diagnostic(
+            paths, load_backtest_config(paths=paths), phase6_run
+        )
+        out_dir.mkdir(parents=True)
+        result["code"] = target_build.git_state(paths.root)
+        phase6_diagnostic.write(result, out_dir / "diagnostic.json")
+    except (
+        ConfigError,
+        ProjectRootError,
+        FileExistsError,
+        ValueError,
+        folds_module.HoldoutAccessError,
+    ) as exc:
+        raise _fail(exc) from exc
+    checks = result["formula_checks"]
+    typer.echo(f"OK: {run_id} | formula checks {json.dumps(checks)}")

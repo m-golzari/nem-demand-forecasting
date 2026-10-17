@@ -1,0 +1,115 @@
+{
+  "benchmark_metrics": {
+    "coverage_p10_p90": 0.7909817351598174,
+    "crossing_mean_magnitude_mw": 0.0,
+    "crossing_rate": 0.0,
+    "evening_mae_mw": 511.5568373059361,
+    "high_demand_mae_mw": 605.7768699971413,
+    "mae_mw": 459.7175834570015,
+    "mean_interval_width_mw": 1475.161945722983,
+    "mean_pinball": 151.58041330650687,
+    "mean_signed_error_mw": -21.232336653348526,
+    "pinball_p10": 104.74082020662102,
+    "pinball_p50": 229.85879172850076,
+    "pinball_p90": 120.14162798439877,
+    "rmse_mw": 674.2985942040991,
+    "wape": 0.09319613222925723
+  },
+  "candidate": "lightgbm_trailing_calibrated",
+  "conditional_calibration_limitations": {
+    "coverage_by_season": {
+      "autumn": 0.8148483476686283,
+      "spring": 0.7503435639028859,
+      "summer": 0.7972222222222223,
+      "winter": 0.7622282608695652
+    },
+    "coverage_fold_11_2026_05": 0.7473118279569892,
+    "coverage_fold_12_2026_06": 0.6888888888888889,
+    "coverage_high_demand": 0.7126929674099486,
+    "late_folds_explanation": "May-June 2026: narrower intervals (x0.75), negative bias (-83 MW) and asymmetric upper-tail misses (17.7% vs 10.4%), not larger point errors (MAE x0.81)",
+    "statement": "not conditionally calibrated; pooled coverage near nominal hides gaps"
+  },
+  "config_hashes": {
+    "configs/backtest.yaml": "866bc466a0ca2f01a8db0337aebb94a4f135a1ea5ec1053bcd8ab531c89e24c2",
+    "configs/feature_availability.yaml": "f0c78c87139dfc085fb940613dbcdae81e542831632847dcef84d83dbe7bd16e",
+    "configs/features.yaml": "fb9b97ccdded68e9b3a9682b6a2fbff04c6f607eaf0b391f3ee09c0a71d5165f",
+    "configs/forecast.yaml": "d6775311bc2f205a53e84cf11b48763a4fada768ca4f6bdb6679c8316ba4639b",
+    "configs/lightgbm.yaml": "4ee25ae468a5b60c73d7eb2be8b1b19a579c6b2c5339774da0c35dba60e3e0bc"
+  },
+  "contracts": {
+    "baseline-benchmark-v1": {
+      "commit": "3268ee70529d8766448f134f7638b77349f16abb",
+      "tag_object": "309e43cd3a3b8fa06e1b5a11c67d05972ce30d5f"
+    },
+    "data-contract-v1": {
+      "commit": "e5c84a99b0577e01440011ea2fcaa60f70c2ea93",
+      "tag_object": "d5a937687ae1df67c9fecf0b67d965af8b830f85"
+    },
+    "feature-contract-v1": {
+      "commit": "e0a9895451d2353d4566ad3e9b18452e3cc10728",
+      "tag_object": "c68b52e084c6c2407c2993353071e75201e7269b"
+    }
+  },
+  "development_code_commit": "eb0a734d8f18ce3c3562871117d27b2685b74802",
+  "development_origins": [
+    "2025-07-01",
+    "2026-06-30"
+  ],
+  "development_run_id": "phase6_lightgbm_20261016_dev",
+  "development_run_manifest_sha256": "a81ae775c5fd5dd3556d8afb1054df5f9533d552d01d5fe08ac4ef98f0acbd06",
+  "diagnostic_conclusion": "explanatory only (D-44); no correctness defect found; selection unchanged",
+  "diagnostic_run_id": "phase6_diagnostic_20261017b",
+  "diagnostic_sha256": "46bb386e58e01292c6fecd9b6bf76a5dcdb0d8f110757c6d6cf7617fad8024fe",
+  "fallback_and_benchmark": "day_week_hybrid_frozen (baseline-benchmark-v1, weight 0.60)",
+  "holdout_boundary": {
+    "evaluated": false,
+    "first_origin": "2026-07-01",
+    "holdout_rows_loaded": 0,
+    "last_origin": "2026-09-30"
+  },
+  "improvement_vs_benchmark": {
+    "bootstrap": {
+      "block": "market_date",
+      "replicates": 2000,
+      "seed": 20261016
+    },
+    "mae_bootstrap_hybrid_minus_candidate": {
+      "ci_high": 115.41554579615276,
+      "ci_low": 79.11431824623048,
+      "mae_difference_mw": 96.94944435874623
+    },
+    "mae_mw": 96.94944435874629,
+    "mae_percent": 21.0889136825488,
+    "mean_pinball_bootstrap_candidate_minus_hybrid": {
+      "ci_high": -29.931362925451808,
+      "ci_low": -41.50931487488614,
+      "difference": -35.540033693698206
+    }
+  },
+  "lightgbm_version": "4.7.0",
+  "metrics": {
+    "coverage_p10_p90": 0.7811643835616439,
+    "crossing_mean_magnitude_mw": 0.4054800537717629,
+    "crossing_rate": 0.008675799086757991,
+    "evening_mae_mw": 419.65615179901965,
+    "high_demand_mae_mw": 524.1337311739414,
+    "mae_mw": 362.76813909825523,
+    "mean_interval_width_mw": 1167.0990547921433,
+    "mean_pinball": 116.04037961280864,
+    "mean_signed_error_mw": -34.47246577236711,
+    "pinball_p10": 75.97351732900191,
+    "pinball_p50": 181.38406954912762,
+    "pinball_p90": 90.76355196029643,
+    "rmse_mw": 546.6567111431865,
+    "wape": 0.07354208034795513
+  },
+  "rows_identical": 8760,
+  "selection_rationale": [
+    "lowest development MAE (362.8 MW) and WAPE (7.35%)",
+    "mean pinball 116.0 MW, close to season calibration's 115.3 MW",
+    "smaller bias than season calibration (-34.5 vs -76.3 MW)",
+    "simpler recency-based calibration (trailing 180 matured origins)",
+    "about 97 MW (21%) lower MAE than the frozen hybrid"
+  ],
+  "status": "provisionally selected for the final gate (owner-approved 2026-10-17, D-43)"
+}
