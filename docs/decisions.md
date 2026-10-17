@@ -126,6 +126,8 @@ owner may override), **Open** (needs a decision in the named phase).
 
 | D-45 | **Diagnostic outcome:** no correctness defect (formula identities exact; data complete). The season-calibration bias comes from level drift across archive vintages; the May–June deterioration combines narrower trailing intervals, a negative bias and upper-tail misses. Selection D-43 stands. Portable record: `docs/benchmarks/phase6_lightgbm_development_candidate.json` | Explanatory diagnostic run `phase6_diagnostic_20261017b` |
 
+| D-46 | **Final pre-holdout artefact** `final_artefact_20261017` (code `bfed6d7`, clean; manifest `58ef2cfb…`) built from the tagged protocol, with the holdout start as fold start: final training ≤ 2026-06-29; calibration 2026-01-01 … 06-29; tuning 2025-10-03 … 12-31. Selected 15 leaves / min 200 / λ 0, iterations 344 / 387 / 249. 0 holdout rows loaded; exact reload. The one-time holdout command is proposed, not executed; its implementation awaits owner approval | Owner instruction (pre-holdout artefact) |
+
 ## Open
 
 | ID | Question | Phase |
