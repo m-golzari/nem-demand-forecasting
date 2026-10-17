@@ -128,6 +128,12 @@ owner may override), **Open** (needs a decision in the named phase).
 
 | D-46 | **Final pre-holdout artefact** `final_artefact_20261017` (code `bfed6d7`, clean; manifest `58ef2cfb…`) built from the tagged protocol, with the holdout start as fold start: final training ≤ 2026-06-29; calibration 2026-01-01 … 06-29; tuning 2025-10-03 … 12-31. Selected 15 leaves / min 200 / λ 0, iterations 344 / 387 / 249. 0 holdout rows loaded; exact reload. The one-time holdout command is proposed, not executed; its implementation awaits owner approval | Owner instruction (pre-holdout artefact) |
 
+## Final evaluation protocol (frozen 2026-10-17, before the evaluator was written)
+
+| ID | Decision | Rationale |
+|---|---|---|
+| D-47 | **Frozen final-evaluation protocol** `configs/final_evaluation.yaml` (`final-holdout-evaluation-v1`). Headline: `lightgbm_trailing_calibrated` vs `day_week_hybrid_frozen` only, from artefact `final_artefact_20261017` (manifest `58ef2cfb…`, model commit `bfed6d7`; model, offset, fallback, allowlist, LightGBM-version and tag identities pinned). Holdout origins 2026-07-01 … 09-30: exactly 92 origins, 2,208 rows, 24 horizons. Primary MAE (MW); secondary aggregate WAPE; uncertainty ranking mean p10/p50/p90 pinball. Also RMSE, bias, per-quantile pinball, p10–p90 coverage, width, crossing rate and magnitude, lower and upper tail-miss rates. Slices: origin month, horizon, market hour, civil evening, day type, season (winter/spring), training-defined high demand (q0.9 of 39,384 pre-holdout targets, origins ≤ 2026-06-29: 6,243.07 MW). Market-date block bootstrap, 2,000 replicates, seed 20261016, for MAE and mean-pinball differences on identical rows. Quantiles stay in frozen order; crossings reported, never sorted. Two internally enforced stages: predictions generated from projected features and sealed (hashed) before any target column is opened. One-time: owner flag, explicit new run ID, clean tree, ledger refusing a repeat; failures record whether targets had been opened. **Descriptive and final:** no result triggers retraining, recalibration or a second candidate. Rehearsal on 2026-03-01 … 05-31 (copied artefact and pre-holdout inputs) is rehearsal-only | Owner instruction; protocol fixed before implementation and before any holdout outcome is read |
+
 ## Open
 
 | ID | Question | Phase |

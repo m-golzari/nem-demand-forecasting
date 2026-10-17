@@ -1,0 +1,118 @@
+# Final holdout evaluation protocol (frozen 2026-10-17 BEFORE the evaluator was written and
+# BEFORE any holdout outcome was read). Decision D-47. Inherits configs/backtest.yaml (slice
+# definitions, residual quantile interpolation, bootstrap) and configs/lightgbm.yaml
+# (allowlist). Changing any value requires a decision-log entry. The evaluation is
+# descriptive and final: no result triggers retraining, recalibration, a new calibration
+# method or a second holdout candidate.
+protocol_version: 1
+protocol_id: final-holdout-evaluation-v1
+decision_rule: descriptive_final
+
+selected_candidate: lightgbm_trailing_calibrated
+benchmark: day_week_hybrid_frozen          # also the fallback; no model switching is evaluated
+headline_models: [lightgbm_trailing_calibrated, day_week_hybrid_frozen]
+quantile_order: frozen_uncorrected         # crossings are reported, never sorted or repaired
+
+# The model artefact is used as built. Everything below is verified before any prediction.
+artefact:
+  run_id: final_artefact_20261017
+  model_producing_commit: bfed6d78817c47ccd7c97808ae4d373dd759544b   # not the evaluator commit
+  pre_evaluation_manifest_sha256: 58ef2cfb70487ea3720c465a0d69fbc46b44f0544ae7a7c45f87608994267a35
+  candidate_record:
+    path: docs/benchmarks/phase6_lightgbm_development_candidate.json
+    sha256: 77d78bd07117ae8b5a9ae8d786ae686b85fa17c69fdaeb788731f6eecdcbd268
+  models:
+    p10: {file: models/lightgbm_p10.txt, alpha: 0.1, iterations: 344,
+          sha256: 1d168e4efdea3f8ef38538711721bd0273f95e89d70d1195b21373e4f173d335}
+    p50: {file: models/lightgbm_p50.txt, alpha: 0.5, iterations: 387,
+          sha256: 224c7f6e8f791865cfd4bc673df4a3aaa411398776e13ce77fa60caa6460ce9a}
+    p90: {file: models/lightgbm_p90.txt, alpha: 0.9, iterations: 249,
+          sha256: dcb7b3c25adf76b89778fe5b7ba16a6cacfe745c0d3aeed26e6ddd7a15a7ff0f}
+  trailing_offsets:                         # must also equal the manifest's inline records
+    file: trailing_offsets.parquet
+    sha256: 8cc8bea13b6ac70b0760f32b0eea164e9f6c34024c211657c2b244973fd60d65
+    rows: 72                                # 24 horizons x 3 quantiles, all calibrated
+  hybrid_fallback:
+    file: hybrid_fallback.json
+    sha256: 5717cbb3b311b0d02fc997d2910cf27527fe14042a3fde8903a73cc2942c7d9a
+    weight: 0.6
+  # sha256 of json.dumps(allowlist) in configs/lightgbm.yaml order (32 columns)
+  feature_allowlist_sha256: 995b69397a638f9e99fba53dcb5eea3f795e02693fcf5b001cb9e28f6ce42eef
+  lightgbm_version: 4.7.0
+  contract_tags:
+    data-contract-v1: {tag_object: d5a937687ae1df67c9fecf0b67d965af8b830f85,
+                       commit: e5c84a99b0577e01440011ea2fcaa60f70c2ea93}
+    feature-contract-v1: {tag_object: c68b52e084c6c2407c2993353071e75201e7269b,
+                          commit: e0a9895451d2353d4566ad3e9b18452e3cc10728}
+    baseline-benchmark-v1: {tag_object: 309e43cd3a3b8fa06e1b5a11c67d05972ce30d5f,
+                            commit: 3268ee70529d8766448f134f7638b77349f16abb}
+    lightgbm-development-v1: {tag_object: 538c00387a43d750d3c79da4d5b450c365566f32,
+                              commit: bc580d590ca159c02dbc748fa15b41cc38389cc1}
+
+# Holdout feature and target rows come from the canonical Phase 3 run (byte hashes verified).
+inputs:
+  feature_run_id: phase3_features_20261016_clean
+  feature_run_manifest_sha256: e407910b719fea439d14578f4062ef89277ff80758895c342d6c3f2cedb6322b
+  profile: primary_operational
+  files:
+    - {path: data/processed/features/phase3_features_20261016_clean/profile=primary_operational/year=2022/part-0.parquet,
+       sha256: 2f41cc03bcd6a0ad1747648ce4bad6fbef2853c8927f727e21fce53cb0d31a66}
+    - {path: data/processed/features/phase3_features_20261016_clean/profile=primary_operational/year=2023/part-0.parquet,
+       sha256: e3a14e0570d5a24bea94ff75bc95436d136808bca8beb5cf127fbd4f0b92c54d}
+    - {path: data/processed/features/phase3_features_20261016_clean/profile=primary_operational/year=2024/part-0.parquet,
+       sha256: a57299cf18346c58c9c0bd5b9ec58340960dea4ace231078ed700ec35892ea8b}
+    - {path: data/processed/features/phase3_features_20261016_clean/profile=primary_operational/year=2025/part-0.parquet,
+       sha256: 95e4fc45aa016b39c60b404319212dbcfe25b2b4f65cfc503b592f7ac823ceb3}
+    - {path: data/processed/features/phase3_features_20261016_clean/profile=primary_operational/year=2026/part-0.parquet,
+       sha256: 8dcd8a65f12bc2042081c2454cc22060805207c33c3fee3ad2e30d8a1054c541}
+
+holdout:
+  first_origin: "2026-07-01"
+  last_origin: "2026-09-30"
+  expected_origins: 92
+  expected_rows: 2208
+  horizons_per_origin: 24
+
+# Stage 1 (prediction) may project only keys + allowlist + lag_168h__available (hybrid input).
+# Stage 2 (evaluation) opens target and slice columns only after the predictions are sealed.
+stages:
+  prediction_columns_extra: [lag_168h__available]
+  forbidden_in_prediction: [target_dispatch_totaldemand_hourly_mean_mw, target_available]
+
+metrics:
+  primary: mae_mw                           # calibrated p50 is the point forecast
+  secondary: wape_aggregate                 # sum(|f - y|) / sum(y)
+  uncertainty_ranking: mean_pinball         # mean of p10/p50/p90 pinball losses
+  reported: [mae_mw, rmse_mw, wape, mean_signed_error_mw, pinball_p10, pinball_p50, pinball_p90,
+             mean_pinball, coverage_p10_p90, mean_interval_width_mw, crossing_rate,
+             crossing_mean_magnitude_mw, lower_tail_miss_rate, upper_tail_miss_rate]
+  headline_rows: identical                  # both models available and target available
+
+slices:
+  # origin_month = market month of the origin; season = civil month of the target hour;
+  # evening and day type follow configs/backtest.yaml.
+  dimensions: [origin_month, horizon, market_hour, is_civil_evening, day_type, season,
+               is_high_demand]
+  expected_seasons: [winter, spring]
+  high_demand:
+    rule: training_quantile                 # 0.9 quantile (backtest.yaml) of available targets
+    training_last_origin: "2026-06-29"      # = final-training cutoff; pre-holdout rows only
+    training_rows: 39384
+    threshold_mw: 6243.067666666667         # computed 2026-10-17 from pre-holdout targets only
+
+bootstrap:                                  # must equal configs/backtest.yaml
+  block: market_date
+  replicates: 2000
+  seed: 20261016
+  confidence: 0.95
+  comparisons:                              # candidate minus benchmark, identical rows
+    - mae_mw
+    - mean_pinball
+
+# End-to-end rehearsal on development origins with copied artefact and pre-holdout inputs.
+# Rehearsal results are labelled rehearsal-only and never update a benchmark or selection.
+rehearsal:
+  first_origin: "2026-03-01"
+  last_origin: "2026-05-31"
+  expected_origins: 92
+  expected_rows: 2208
