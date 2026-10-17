@@ -117,6 +117,13 @@ owner may override), **Open** (needs a decision in the named phase).
 |---|---|
 | D-42 | Run `phase6_lightgbm_20261016_dev` (code `eb0a734`) completed under the frozen protocol. **No candidate was selected for holdout evaluation**; selection awaits owner review. Observed: LightGBM variants have about 96 MW lower MAE and about 35 MW lower mean pinball than the frozen hybrid (bootstrap CIs exclude 0), with indistinguishable MAE among the three variants. No candidate is conditionally calibrated (high-demand coverage 0.63–0.76; worst folds 0.59–0.72). Season calibration of LightGBM introduced a −76 MW bias. Season calibration had 0 fallbacks |
 
+## Phase 6 closeout protocol (frozen 2026-10-17, before any diagnostic was computed)
+
+| ID | Decision | Rationale |
+|---|---|---|
+| D-43 | **Provisional selection:** `lightgbm_trailing_calibrated` is the candidate for the final gate, with `day_week_hybrid_frozen` as the required fallback and benchmark. Rationale: lowest development MAE (362.8 MW) and WAPE (7.35%); mean pinball 116.0 MW, close to season calibration's 115.3; smaller bias than season calibration (−34.5 vs −76.3 MW); simpler recency-based calibration; about 97 MW (21%) MAE improvement over the frozen hybrid. This does **not** claim conditional calibration | Owner selection |
+| D-44 | **The diagnostic is explanatory only.** It uses only the existing Phase 6 development predictions and offsets: no retraining, feature change, calibration-window change, new candidate, new calibration method or holdout access. `lightgbm_trailing_calibrated` stays selected unless a correctness defect is found. If one is found, work stops and it is reported before anything is changed or rerun | Owner instruction; prevents post-hoc method shopping |
+
 ## Open
 
 | ID | Question | Phase |
