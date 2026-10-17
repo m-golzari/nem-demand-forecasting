@@ -248,14 +248,11 @@ def season_months(
     return out
 
 
-def run_lightgbm_fold(
-    design: pd.DataFrame, fold: Fold, win: Windows, proto: LightGBMProtocol, bcfg: BacktestConfig
-) -> dict[str, Any]:
+def select_structure(design: pd.DataFrame, win: Windows, proto: LightGBMProtocol) -> dict[str, Any]:
+    """Nested chronological tuning (D-37/D-38), shared by development folds and final artefact."""
     allowlist = proto.feature_allowlist.columns
     fixed = dict(proto.lightgbm.fixed_params)
     rounds, patience = proto.lightgbm.max_boosting_rounds, proto.lightgbm.early_stopping_rounds
-    timing: dict[str, float] = {}
-    started = time.monotonic()
     inner_train = _eligible(_between(design, None, win.inner_train_last))
     tuning = _eligible(_between(design, win.tuning_first, win.tuning_last))
     xi, yi = feature_matrix(inner_train, allowlist), _y(inner_train)
@@ -307,6 +304,30 @@ def run_lightgbm_fold(
                 )
             ),
         }
+    return {
+        "candidates": candidates,
+        "selected": selected,
+        "structure": structure,
+        "iterations": iterations,
+        "tail_tuning": tail_tuning,
+        "rows": {"inner_train": len(inner_train), "tuning": len(tuning)},
+    }
+
+
+def run_lightgbm_fold(
+    design: pd.DataFrame, fold: Fold, win: Windows, proto: LightGBMProtocol, bcfg: BacktestConfig
+) -> dict[str, Any]:
+    allowlist = proto.feature_allowlist.columns
+    timing: dict[str, float] = {}
+    started = time.monotonic()
+    tuned = select_structure(design, win, proto)
+    candidates, selected = tuned["candidates"], tuned["selected"]
+    structure, iterations, tail_tuning = (
+        tuned["structure"],
+        tuned["iterations"],
+        tuned["tail_tuning"],
+    )
+    inner_train_rows, tuning_rows = tuned["rows"]["inner_train"], tuned["rows"]["tuning"]
     timing["tuning"] = time.monotonic() - started
 
     t0 = time.monotonic()
@@ -372,8 +393,8 @@ def run_lightgbm_fold(
         "timing": timing,
         "models": {QNAME[q]: final[q].model_to_string() for q in QUANTILES},
         "rows": {
-            "inner_train": len(inner_train),
-            "tuning": len(tuning),
+            "inner_train": inner_train_rows,
+            "tuning": tuning_rows,
             "calibration": len(cal_rows),
             "outer": len(outer),
         },

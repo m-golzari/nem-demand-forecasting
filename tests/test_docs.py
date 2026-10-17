@@ -102,7 +102,12 @@ def test_tags_named_in_readme_exist_locally_when_git_available() -> None:
         ).stdout.split()
     except (OSError, subprocess.CalledProcessError):
         return
-    for tag in ("data-contract-v1", "feature-contract-v1", "baseline-benchmark-v1"):
+    for tag in (
+        "data-contract-v1",
+        "feature-contract-v1",
+        "baseline-benchmark-v1",
+        "lightgbm-development-v1",
+    ):
         assert tag in README and (tag in tags or not tags)
 
 

@@ -272,3 +272,57 @@ def test_real_phase6_inputs_bounded() -> None:
     x = feature_matrix(outer[outer["horizon"] == 24], allow)
     assert np.isnan(x[:, allow.index("lag_24h")]).all()
     assert np.isfinite(predict(res.booster, x, 20)).all()
+
+
+def test_real_fold1_tuning_reproduces_recorded_development_selection() -> None:
+    """Refactored select_structure == recorded Phase 6 fold-1 selection (structure + iterations)."""
+    import json
+
+    from nem_forecast.config import load_backtest_config, load_lightgbm_protocol
+    from nem_forecast.evaluation.backtest import load_design
+    from nem_forecast.evaluation.folds import build_folds
+    from nem_forecast.evaluation.phase6 import nested_windows, select_structure
+
+    paths = ProjectPaths.from_root()
+    record = paths.results_runs / "phase6_lightgbm_20261016_dev" / "folds_and_tuning.json"
+    if not record.exists():
+        pytest.skip("Phase 6 development run unavailable")
+    bcfg, proto = load_backtest_config(), load_lightgbm_protocol()
+    design, _ = load_design(
+        paths, bcfg, sorted({*proto.feature_allowlist.columns, "eligible_initial_ml_features"})
+    )
+    fold = build_folds(bcfg)[0]
+    tuned = select_structure(design, nested_windows(fold, proto, bcfg), proto)
+    expected = json.loads(record.read_text())[0]
+    assert tuned["structure"] == expected["structure"]
+    assert {
+        f"p{int(q * 100):02d}" if q != 0.5 else "p50": v for q, v in tuned["iterations"].items()
+    } == {k: int(v) for k, v in expected["iterations"].items()}
+
+
+def test_real_final_artefact_reloads_exactly() -> None:
+    import json
+
+    import pandas as pd
+
+    from nem_forecast.evaluation.final_artefact import FIXTURE_TOLERANCE_MW, load_final_artefact
+
+    paths = ProjectPaths.from_root()
+    runs = sorted(
+        p
+        for p in paths.results_runs.glob("final_artefact_*")
+        if (p / "pre_evaluation_manifest.json").exists()
+    )
+    if not runs:
+        pytest.skip("final artefact not built locally")
+    run = runs[-1]
+    manifest = json.loads((run / "pre_evaluation_manifest.json").read_text())
+    assert (
+        manifest["holdout"]["holdout_rows_loaded"] == 0
+        and manifest["holdout"]["holdout_evaluated"] is False
+    )
+    art = load_final_artefact(run)
+    stored = pd.read_parquet(run / "fixture_predictions.parquet")
+    again = art.predict(pd.read_parquet(run / "fixture_inputs.parquet"))
+    for c in ("p10", "p50", "p90"):
+        assert (again[c] - stored[c]).abs().max() <= FIXTURE_TOLERANCE_MW

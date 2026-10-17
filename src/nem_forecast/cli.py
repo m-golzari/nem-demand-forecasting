@@ -23,7 +23,7 @@ from nem_forecast.config import (
     load_forecast_config,
     load_lightgbm_protocol,
 )
-from nem_forecast.evaluation import backtest, phase6, phase6_diagnostic
+from nem_forecast.evaluation import backtest, final_artefact, phase6, phase6_diagnostic
 from nem_forecast.evaluation import folds as folds_module
 from nem_forecast.features import build as feature_build
 from nem_forecast.features import compare as feature_compare
@@ -566,6 +566,9 @@ def evaluate_holdout_command(
             help="Required: explicit owner approval of the frozen candidate.",
         ),
     ] = False,
+    artefact_run_id: Annotated[
+        str | None, typer.Option("--artefact-run-id", help="Final pre-holdout artefact run ID.")
+    ] = None,
 ) -> None:
     """Final-holdout evaluation path (origins 2026-07-01 .. 2026-09-30). Guarded."""
     if not owner_approved_final_evaluation:
@@ -643,3 +646,68 @@ def lightgbm_diagnostic_command(
         raise _fail(exc) from exc
     checks = result["formula_checks"]
     typer.echo(f"OK: {run_id} | formula checks {json.dumps(checks)}")
+
+
+@app.command("build-final-artefact")
+def build_final_artefact_command(
+    run_id: Annotated[str, typer.Option("--run-id", help="New artefact run ID.")],
+    root: RootOption = None,
+) -> None:
+    """Build the final pre-holdout artefact of the tagged candidate (no holdout rows read)."""
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    try:
+        paths = ProjectPaths.from_root(root)
+        code = target_build.git_state(paths.root)
+        if code.get("dirty") is not False:
+            raise ValueError(f"build-final-artefact requires a clean git tree: {code}")
+        tag = "lightgbm-development-v1"
+        tag_commit = backtest._git(paths.root, "rev-parse", f"{tag}^{{commit}}")
+        if tag_commit is None:
+            raise ValueError(f"tag {tag} not found")
+        bcfg, proto = load_backtest_config(paths=paths), load_lightgbm_protocol(paths=paths)
+        cols = sorted(
+            {
+                *proto.feature_allowlist.columns,
+                "eligible_initial_ml_features",
+                "lag_24h",
+                "lag_24h__available",
+                "lag_168h",
+                "lag_168h__available",
+            }
+        )
+        design, input_info = backtest.load_design(paths, bcfg, cols)  # holdout filtered at read
+        records = (
+            "docs/benchmarks/phase6_lightgbm_development_candidate.json",
+            "docs/benchmarks/phase4_development_benchmark.json",
+        )
+        provenance = {
+            "code": code,
+            "tags": {
+                t: {
+                    "tag_object": backtest._git(paths.root, "rev-parse", t),
+                    "commit": backtest._git(paths.root, "rev-parse", f"{t}^{{commit}}"),
+                }
+                for t in ("data-contract-v1", "feature-contract-v1", "baseline-benchmark-v1", tag)
+            },
+            "inputs": input_info,
+            "config_hashes": {f: sha256_file(paths.root / f) for f in phase6.CONFIG_FILES},
+            "benchmark_record_hashes": {f: sha256_file(paths.root / f) for f in records},
+            "environment_full": target_build.environment(),
+        }
+        manifest = final_artefact.build_final_artefact(
+            design, paths.results_runs / run_id, proto, bcfg, provenance
+        )
+    except (
+        ConfigError,
+        ProjectRootError,
+        FileExistsError,
+        ValueError,
+        folds_module.HoldoutAccessError,
+    ) as exc:
+        raise _fail(exc) from exc
+    typer.echo(
+        f"OK: artefact {run_id} | structure {manifest['selection']['structure']} | iterations "
+        f"{ {k: v['iterations'] for k, v in manifest['models'].items()} } | reload diff "
+        f"{manifest['fixture']['max_reload_difference_mw']} MW | holdout rows loaded "
+        f"{manifest['holdout']['holdout_rows_loaded']}"
+    )
