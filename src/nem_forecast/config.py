@@ -564,3 +564,208 @@ def load_lightgbm_protocol(
         raise ConfigError(f"could not parse YAML in {config_path}: {exc}") from exc
     except ValidationError as exc:
         raise ConfigError(f"LightGBM protocol is invalid:\n{exc}") from exc
+
+
+# --- Final holdout evaluation protocol (D-47) ---------------------------------------
+
+_SHA256 = r"^[0-9a-f]{64}$"
+_GIT_SHA = r"^[0-9a-f]{40}$"
+_RUN_ID = r"^[A-Za-z0-9_.-]+$"
+FINAL_REPORTED_METRICS = (
+    "mae_mw",
+    "rmse_mw",
+    "wape",
+    "mean_signed_error_mw",
+    "pinball_p10",
+    "pinball_p50",
+    "pinball_p90",
+    "mean_pinball",
+    "coverage_p10_p90",
+    "mean_interval_width_mw",
+    "crossing_rate",
+    "crossing_mean_magnitude_mw",
+    "lower_tail_miss_rate",
+    "upper_tail_miss_rate",
+)
+FINAL_SLICE_DIMENSIONS = (
+    "origin_month",
+    "horizon",
+    "market_hour",
+    "is_civil_evening",
+    "day_type",
+    "season",
+    "is_high_demand",
+)
+
+
+class ArtefactModelSpec(_Frozen):
+    file: str
+    alpha: float
+    iterations: int = Field(gt=0)
+    sha256: str = Field(pattern=_SHA256)
+
+
+class ArtefactFileSpec(_Frozen):
+    file: str
+    sha256: str = Field(pattern=_SHA256)
+    rows: int | None = None
+
+
+class HybridFallbackSpec(_Frozen):
+    file: str
+    sha256: str = Field(pattern=_SHA256)
+    weight: float = Field(ge=0.0, le=1.0)
+
+
+class TagSpec(_Frozen):
+    tag_object: str = Field(pattern=_GIT_SHA)
+    commit: str = Field(pattern=_GIT_SHA)
+
+
+class RecordSpec(_Frozen):
+    path: str
+    sha256: str = Field(pattern=_SHA256)
+
+
+class FinalArtefactSpec(_Frozen):
+    run_id: str = Field(pattern=_RUN_ID)
+    model_producing_commit: str = Field(pattern=_GIT_SHA)
+    pre_evaluation_manifest_sha256: str = Field(pattern=_SHA256)
+    candidate_record: RecordSpec
+    models: dict[Literal["p10", "p50", "p90"], ArtefactModelSpec]
+    trailing_offsets: ArtefactFileSpec
+    hybrid_fallback: HybridFallbackSpec
+    feature_allowlist_sha256: str = Field(pattern=_SHA256)
+    lightgbm_version: str
+    contract_tags: dict[str, TagSpec]
+
+
+class FinalInputsSpec(_Frozen):
+    feature_run_id: str = Field(pattern=_RUN_ID)
+    feature_run_manifest_sha256: str = Field(pattern=_SHA256)
+    profile: Literal["primary_operational"]
+    files: tuple[RecordSpec, ...]
+
+
+class EvaluationWindowSpec(_Frozen):
+    first_origin: dt.date
+    last_origin: dt.date
+    expected_origins: int = Field(gt=0)
+    expected_rows: int = Field(gt=0)
+    horizons_per_origin: Literal[24] = 24
+
+    @model_validator(mode="after")
+    def _check(self) -> EvaluationWindowSpec:
+        days = (self.last_origin - self.first_origin).days + 1
+        if days != self.expected_origins:
+            raise ValueError(f"window has {days} origins, protocol expects {self.expected_origins}")
+        if self.expected_rows != self.expected_origins * self.horizons_per_origin:
+            raise ValueError("expected_rows must equal expected_origins x horizons_per_origin")
+        return self
+
+
+class StagesSpec(_Frozen):
+    prediction_columns_extra: tuple[str, ...]
+    forbidden_in_prediction: tuple[str, ...]
+
+
+class FinalMetricsSpec(_Frozen):
+    primary: Literal["mae_mw"]
+    secondary: Literal["wape_aggregate"]
+    uncertainty_ranking: Literal["mean_pinball"]
+    reported: tuple[str, ...]
+    headline_rows: Literal["identical"]
+
+
+class HighDemandSpec(_Frozen):
+    rule: Literal["training_quantile"]
+    training_last_origin: dt.date
+    training_rows: int = Field(gt=0)
+    threshold_mw: float = Field(gt=0)
+
+
+class FinalSlicesSpec(_Frozen):
+    dimensions: tuple[str, ...]
+    expected_seasons: tuple[str, ...]
+    high_demand: HighDemandSpec
+
+
+class FinalBootstrapSpec(_Frozen):
+    block: Literal["market_date"]
+    replicates: Literal[2000]
+    seed: Literal[20261016]
+    confidence: float
+    comparisons: tuple[Literal["mae_mw", "mean_pinball"], ...]
+
+    @field_validator("confidence")
+    @classmethod
+    def _confidence(cls, value: float) -> float:
+        if value != 0.95:
+            raise ValueError("bootstrap confidence is frozen to 0.95")
+        return value
+
+
+class FinalEvaluationProtocol(_Frozen):
+    protocol_version: Literal[1]
+    protocol_id: Literal["final-holdout-evaluation-v1"]
+    decision_rule: Literal["descriptive_final"]
+    selected_candidate: Literal["lightgbm_trailing_calibrated"]
+    benchmark: Literal["day_week_hybrid_frozen"]
+    headline_models: tuple[str, ...]
+    quantile_order: Literal["frozen_uncorrected"]
+    artefact: FinalArtefactSpec
+    inputs: FinalInputsSpec
+    holdout: EvaluationWindowSpec
+    stages: StagesSpec
+    metrics: FinalMetricsSpec
+    slices: FinalSlicesSpec
+    bootstrap: FinalBootstrapSpec
+    rehearsal: EvaluationWindowSpec
+
+    @model_validator(mode="after")
+    def _check(self) -> FinalEvaluationProtocol:
+        if self.headline_models != (self.selected_candidate, self.benchmark):
+            raise ValueError("the headline comparison is frozen to the candidate and benchmark")
+        if (self.holdout.first_origin, self.holdout.last_origin) != (
+            HOLDOUT_FIRST_ORIGIN,
+            dt.date(2026, 9, 30),
+        ):
+            raise ValueError("the holdout window is frozen to 2026-07-01 .. 2026-09-30")
+        if self.rehearsal.last_origin >= self.holdout.first_origin:
+            raise ValueError("rehearsal origins must precede the holdout")
+        if self.slices.high_demand.training_last_origin != (
+            self.holdout.first_origin - dt.timedelta(days=2)
+        ):
+            raise ValueError("high-demand training rows end at the last matured origin (H - 2 d)")
+        if {k: m.alpha for k, m in self.artefact.models.items()} != {
+            "p10": 0.1,
+            "p50": 0.5,
+            "p90": 0.9,
+        }:
+            raise ValueError("artefact models must be the p10/p50/p90 quantile models")
+        if self.metrics.reported != FINAL_REPORTED_METRICS:
+            raise ValueError("reported metrics are frozen")
+        if self.slices.dimensions != FINAL_SLICE_DIMENSIONS:
+            raise ValueError("slice dimensions are frozen")
+        required = {"target_dispatch_totaldemand_hourly_mean_mw", "target_available"}
+        if not required <= set(self.stages.forbidden_in_prediction):
+            raise ValueError("target columns must be forbidden in the prediction stage")
+        if self.bootstrap.comparisons != ("mae_mw", "mean_pinball"):
+            raise ValueError("bootstrap comparisons are frozen to mae_mw and mean_pinball")
+        return self
+
+
+def load_final_evaluation_protocol(
+    path: str | Path | None = None, paths: ProjectPaths | None = None
+) -> FinalEvaluationProtocol:
+    paths = paths or ProjectPaths.from_root()
+    config_path = paths.root / (path or "configs/final_evaluation.yaml")
+    if not config_path.is_file():
+        raise ConfigError(f"final evaluation protocol not found: {config_path}")
+    try:
+        data = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        return FinalEvaluationProtocol.model_validate(data)
+    except yaml.YAMLError as exc:
+        raise ConfigError(f"could not parse YAML in {config_path}: {exc}") from exc
+    except ValidationError as exc:
+        raise ConfigError(f"final evaluation protocol is invalid:\n{exc}") from exc

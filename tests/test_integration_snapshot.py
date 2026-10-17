@@ -326,3 +326,40 @@ def test_real_final_artefact_reloads_exactly() -> None:
     again = art.predict(pd.read_parquet(run / "fixture_inputs.parquet"))
     for c in ("p10", "p50", "p90"):
         assert (again[c] - stored[c]).abs().max() <= FIXTURE_TOLERANCE_MW
+
+
+def test_real_holdout_preflight_binds_frozen_artefact_without_reading_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every artefact/config/input binding of the final evaluation passes on the real files.
+
+    Feature/target files are only hashed; ``FeatureSource.read`` (the sole row reader) is disabled.
+    """
+    from nem_forecast.config import load_final_evaluation_protocol, load_lightgbm_protocol
+    from nem_forecast.evaluation import backtest, holdout
+    from nem_forecast.target.build import git_state
+
+    paths = ProjectPaths.from_root()
+    protocol = load_final_evaluation_protocol(paths=paths)
+    if not (paths.results_runs / protocol.artefact.run_id).exists():
+        pytest.skip("final artefact not built locally")
+
+    def no_read(*a: object, **k: object) -> None:
+        raise AssertionError("preflight decoded rows")
+
+    monkeypatch.setattr(holdout.FeatureSource, "read", no_read)
+    spec = holdout.final_spec(paths.root, protocol, "pytest_preflight_never_created")
+    record = holdout.preflight(
+        spec,
+        protocol,
+        load_lightgbm_protocol(paths=paths).feature_allowlist.columns,
+        paths.root,
+        git_state(paths.root),
+        lambda *a: backtest._git(paths.root, *a),
+        require_clean=False,
+    )
+    assert all(record["artefact"]["checks"].values())
+    assert record["window"]["expected_origins"] == 92 and record["window"]["expected_rows"] == 2208
+    assert record["evaluation_target_rows_loaded"] == 0
+    assert record["model_producing_commit"].startswith("bfed6d7")
+    assert not spec.output_dir.exists()

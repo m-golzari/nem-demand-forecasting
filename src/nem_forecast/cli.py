@@ -20,10 +20,11 @@ from nem_forecast.config import (
     load_backtest_config,
     load_feature_availability_config,
     load_feature_config,
+    load_final_evaluation_protocol,
     load_forecast_config,
     load_lightgbm_protocol,
 )
-from nem_forecast.evaluation import backtest, final_artefact, phase6, phase6_diagnostic
+from nem_forecast.evaluation import backtest, final_artefact, holdout, phase6, phase6_diagnostic
 from nem_forecast.evaluation import folds as folds_module
 from nem_forecast.features import build as feature_build
 from nem_forecast.features import compare as feature_compare
@@ -563,26 +564,131 @@ def evaluate_holdout_command(
         bool,
         typer.Option(
             "--owner-approved-final-evaluation",
-            help="Required: explicit owner approval of the frozen candidate.",
+            help="Required: explicit owner approval of the one-time final evaluation.",
         ),
     ] = False,
     artefact_run_id: Annotated[
-        str | None, typer.Option("--artefact-run-id", help="Final pre-holdout artefact run ID.")
+        str | None, typer.Option("--artefact-run-id", help="Frozen pre-holdout artefact run ID.")
     ] = None,
+    run_id: Annotated[
+        str | None, typer.Option("--run-id", help="New, never-used evaluation run ID.")
+    ] = None,
+    acknowledge_prior_target_access: Annotated[
+        bool,
+        typer.Option(
+            "--acknowledge-prior-target-access",
+            help="Only after a disclosed failure that had opened targets (not pristine).",
+        ),
+    ] = False,
+    root: RootOption = None,
 ) -> None:
-    """Final-holdout evaluation path (origins 2026-07-01 .. 2026-09-30). Guarded."""
-    if not owner_approved_final_evaluation:
-        raise _fail(
-            folds_module.HoldoutAccessError(
-                "final-holdout evaluation requires --owner-approved-final-evaluation and a frozen, "
-                "owner-approved candidate (Phase 7)"
+    """One-time final holdout evaluation (2026-07-01 .. 2026-09-30) of the frozen artefact."""
+    try:
+        if not owner_approved_final_evaluation:
+            raise folds_module.HoldoutAccessError(
+                "final-holdout evaluation requires --owner-approved-final-evaluation; "
+                "nothing was read"
             )
+        if not run_id or not artefact_run_id:
+            raise holdout.EvaluationRefusedError(
+                "--artefact-run-id and an explicit new --run-id are required; nothing was read"
+            )
+        paths = ProjectPaths.from_root(root)
+        protocol = load_final_evaluation_protocol(paths=paths)
+        if artefact_run_id != protocol.artefact.run_id:
+            raise holdout.EvaluationRefusedError(
+                f"artefact {artefact_run_id} is not the frozen artefact "
+                f"{protocol.artefact.run_id}; nothing was read"
+            )
+        manifest = holdout.run_evaluation(
+            holdout.final_spec(paths.root, protocol, run_id, acknowledge_prior_target_access),
+            protocol,
+            load_backtest_config(paths=paths),
+            load_lightgbm_protocol(paths=paths).feature_allowlist.columns,
+            paths.root,
+            target_build.git_state(paths.root),
+            lambda *a: backtest._git(paths.root, *a),
         )
-    raise _fail(
-        NotImplementedError(
-            "final-holdout evaluation is not implemented before the Phase 7 owner gate; "
-            "nothing was read"
+    except (
+        ConfigError,
+        ProjectRootError,
+        FileExistsError,
+        ValueError,
+        RuntimeError,
+    ) as exc:
+        raise _fail(exc) from exc
+    inst = manifest["instrumentation"]
+    typer.echo(
+        f"OK: {manifest['run_id']} | predictions {inst['prediction_rows_generated']} sealed "
+        f"{inst['predictions_sealed_utc']} | targets opened {inst['targets_first_opened_utc']} | "
+        f"target rows {inst['target_rows_loaded']} | pristine "
+        f"{manifest['pristine_first_evaluation']}"
+    )
+
+
+@app.command("holdout-preflight")
+def holdout_preflight_command(
+    artefact_run_id: Annotated[str, typer.Option("--artefact-run-id", help="Frozen artefact.")],
+    proposed_run_id: Annotated[
+        str, typer.Option("--proposed-run-id", help="Run ID the final evaluation will use.")
+    ],
+    run_id: Annotated[str, typer.Option("--run-id", help="New preflight run ID.")],
+    root: RootOption = None,
+) -> None:
+    """Verify every binding of the final evaluation without decoding any feature or target row."""
+    try:
+        paths = ProjectPaths.from_root(root)
+        protocol = load_final_evaluation_protocol(paths=paths)
+        if artefact_run_id != protocol.artefact.run_id:
+            raise holdout.EvaluationRefusedError(
+                f"artefact {artefact_run_id} is not the frozen artefact {protocol.artefact.run_id}"
+            )
+        out_dir = paths.results_runs / run_id
+        if out_dir.exists():
+            raise FileExistsError(f"{out_dir} exists; run IDs are never reused")
+        record = holdout.preflight(
+            holdout.final_spec(paths.root, protocol, proposed_run_id),
+            protocol,
+            load_lightgbm_protocol(paths=paths).feature_allowlist.columns,
+            paths.root,
+            target_build.git_state(paths.root),
+            lambda *a: backtest._git(paths.root, *a),
         )
+        out_dir.mkdir(parents=True)
+        write_json_atomic(out_dir / "pre_execution_manifest.json", record)
+    except (ConfigError, ProjectRootError, FileExistsError, ValueError, RuntimeError) as exc:
+        raise _fail(exc) from exc
+    typer.echo(
+        f"OK: preflight {run_id} | pre-execution manifest "
+        f"{sha256_file(out_dir / 'pre_execution_manifest.json')} | command: {record['command']}"
+    )
+
+
+@app.command("holdout-rehearsal")
+def holdout_rehearsal_command(
+    run_id: Annotated[str, typer.Option("--run-id", help="New rehearsal run ID.")],
+    root: RootOption = None,
+) -> None:
+    """Rehearsal-only end-to-end run on development origins (copied artefact and inputs)."""
+    try:
+        paths = ProjectPaths.from_root(root)
+        record = holdout.run_rehearsal(
+            paths.root,
+            load_final_evaluation_protocol(paths=paths),
+            load_backtest_config(paths=paths),
+            load_lightgbm_protocol(paths=paths).feature_allowlist.columns,
+            run_id,
+            target_build.git_state(paths.root),
+            lambda *a: backtest._git(paths.root, *a),
+        )
+    except (ConfigError, ProjectRootError, FileExistsError, ValueError, RuntimeError) as exc:
+        raise _fail(exc) from exc
+    inst = record["instrumentation"]
+    typer.echo(
+        f"OK: rehearsal {run_id} (rehearsal only) | predictions "
+        f"{inst['prediction_rows_generated']} | target rows {inst['target_rows_loaded']} | "
+        f"holdout target rows {inst['holdout_target_rows_loaded']} | refusals "
+        f"{sorted(record['refusals'])}"
     )
 
 
