@@ -1,6 +1,6 @@
 # Pre-holdout report: final artefact for the tagged candidate (owner gate)
 
-Date: 2026-10-17 · Status: **built; awaiting the owner's final-gate decision.**
+Date: 2026-10-17 · Status: **artefact approved; evaluator implemented and rehearsed; holdout NOT executed (awaiting explicit owner approval).**
 
 - **Holdout:** origins 2026-07-01 … 2026-09-30 were **not loaded, predicted
   or evaluated**, and `evaluate-holdout` has not been executed.
@@ -64,16 +64,66 @@ frozen development rules.
 | `pytest` (offline) | **238 passed** |
 | `pytest -m integration` | **9 passed**, 1 skipped (artefact not yet built); then **2 of 2 passed** post-build |
 
+## Frozen evaluation pathway (implemented, NOT executed on the holdout)
+
+The owner approved the artefact. The final holdout evaluation is **not yet
+authorised**.
+
+- **Protocol** `configs/final_evaluation.yaml` (`final-holdout-evaluation-v1`,
+  D-47) was committed in `dec5793`, **before** any evaluator code was written.
+  It pins:
+  - the candidate and benchmark;
+  - every artefact identity;
+  - the inputs;
+  - the window: 92 origins, 2,208 rows, 24 horizons;
+  - the metrics and slices;
+  - the high-demand threshold: 6,243.07 MW, the 0.9 quantile of 39,384
+    pre-holdout targets;
+  - the bootstrap and the rehearsal window.
+- **Evaluator code** is in commit `e749861`
+  (`src/nem_forecast/evaluation/holdout.py`, CLI `evaluate-holdout`,
+  `holdout-preflight`, `holdout-rehearsal`). The artefact was produced by
+  `bfed6d7`. The evaluator never rebuilds or modifies it.
+- **Before prediction**, it verifies:
+  - the manifest `58ef2cfb…` and the three model hashes;
+  - the offset parquet `8cc8bea1…`, and that it equals the manifest's inline
+    records;
+  - the fallback file `5717cbb3…` and its weight 0.6;
+  - the allowlist order and its hash `995b6939…`;
+  - LightGBM 4.7.0;
+  - the four tags, both in the manifest and in the repository;
+  - the selected-candidate identity, the candidate record and the
+    model-producing commit;
+  - the holdout boundary;
+  - the unchanged configs;
+  - the feature-run identity and the input file hashes.
+
+  It refuses on any mismatch.
+- **Stage 1** reads only the projected keys and approved features for the
+  window. It generates candidate and fallback predictions, writes them
+  atomically, verifies an exact reload, then hashes and seals them.
+- **Stage 2** records target access in the ledger, then opens target and slice
+  columns, and computes the frozen metrics, slices and bootstrap.
+- **Instrumentation and safeguards:**
+  - The run manifest records prediction rows, the maximum origin, the
+    prediction-file hash, the seal and first target-access timestamps, the
+    target rows loaded, the identical-row reconciliation and whether the
+    holdout evaluation was executed.
+  - Failure manifests record each stage flag, and whether a retry stays
+    pristine.
+  - The ledger (`results/holdout_ledger/`, git-ignored) refuses a repeat
+    after success.
+- **Rehearsal:** passed (rehearsal only; `phase_7_holdout_rehearsal.md`).
+
 ## Proposed one-time holdout command (NOT executed)
 
 ```bash
-nem-forecast evaluate-holdout --owner-approved-final-evaluation --artefact-run-id final_artefact_20261017
+nem-forecast evaluate-holdout \
+  --owner-approved-final-evaluation \
+  --artefact-run-id final_artefact_20261017 \
+  --run-id phase7_final_holdout_20261017
 ```
 
-- **Current state:** the command refuses without the approval flag. With the
-  flag it currently raises “not implemented … nothing was read”. The
-  evaluation logic itself has **not been written**, so no holdout code path
-  exists that could have read outcomes.
-- **On owner approval:** implement it under a separately frozen evaluation
-  protocol, using the same metrics, slices, identical-row rules and bootstrap,
-  this artefact, and the hybrid fallback. Run it once.
+Run it only after explicit owner approval, from the reviewed clean commit.
+Afterwards, compare the run's `pre_execution_manifest.json` hash with the
+preflight hash reported at the gate.

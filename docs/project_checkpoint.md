@@ -1,6 +1,6 @@
 # Project checkpoint (compact ledger)
 
-Updated 2026-10-16. The authoritative detail is in the phase reports and run
+Updated 2026-10-17. The authoritative detail is in the phase reports and run
 manifests.
 
 ## Objective and scope
@@ -25,6 +25,7 @@ manifests.
 - p10–p90 coverage is 0.791 pooled but seasonally miscalibrated (D-32: summer 0.665, January 2026 0.587, holidays 0.686).
 - Phase 4 frozen benchmark tagged `baseline-benchmark-v1` (`3268ee7`). Domain-hygiene test is exception-free.
 - **Phase 6 LightGBM development approved (2026-10-17).** Selected candidate `lightgbm_trailing_calibrated`; fallback `day_week_hybrid_frozen` (D-43). Diagnostic found no defect (D-45). Tag `lightgbm-development-v1` (object `538c003`, commit `bc580d5`). **Final pre-holdout artefact `final_artefact_20261017` built (D-46); at the FINAL OWNER GATE.** Proposed command (not executed): `nem-forecast evaluate-holdout --owner-approved-final-evaluation --artefact-run-id final_artefact_20261017`.
+- **Final evaluation pathway (2026-10-17):** protocol `configs/final_evaluation.yaml` frozen (D-47, `dec5793`) before the evaluator (`e749861`, D-48). Rehearsal `phase7_rehearsal_20261017` passed (rehearsal only). **Holdout target rows loaded: 0. Not executed; awaits explicit owner approval.** Proposed: `nem-forecast evaluate-holdout --owner-approved-final-evaluation --artefact-run-id final_artefact_20261017 --run-id phase7_final_holdout_20261017`. Run `holdout-preflight` first and compare the pre-execution manifest hash.
 - Earlier status: Protocol frozen in `configs/lightgbm.yaml` (`24e9a28`, before LightGBM was installed). Run `phase6_lightgbm_20261016_dev` (code `eb0a734`, clean; manifest `a81ae775…`).
   - Development MAE: hybrid 459.7; LightGBM raw 363.2, trailing 362.8, season 363.4 MW.
   - Mean pinball: hybrid 151.6; LightGBM 116.8 / 116.0 / 115.3.
