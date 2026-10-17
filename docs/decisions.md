@@ -136,6 +136,8 @@ owner may override), **Open** (needs a decision in the named phase).
 
 | D-48 | **Evaluator implemented and rehearsed, not executed.** The D-47 pathway (commit `e749861`; distinct from model commit `bfed6d7`) passed 23 synthetic tests and a bounded real preflight. The rehearsal `phase7_rehearsal_20261017` (rehearsal only; in-sample origins) gave 2,208 identical rows, predictions sealed before target access, 2 crossings reported without sorting, and repeat and overwrite refused. Holdout target rows loaded: 0. Execution awaits explicit owner approval | Owner instruction (stop before real execution) |
 
+| D-49 | **Frozen threshold only.** The first rehearsal recomputed the high-demand threshold by opening 36,456 pre-window targets, which is inconsistent with D-47. Correction `add00d9`: the evaluator uses only the frozen scalar in `configs/final_evaluation.yaml` (6,243.067666666667 MW). It checks it against the pinned record `docs/benchmarks/final_evaluation_high_demand_threshold.json` (`b39b14a6…`) and records it in the manifests. It never opens historical targets; after the seal it opens only the 2,208 window target rows. Rehearsal rerun as `phase7_rehearsal_20261017b`: 2,208 target rows, 0 threshold rows. The protocol commit `dec5793` and the artefact are unchanged | Owner instruction (protocol consistency) |
+
 ## Open
 
 | ID | Question | Phase |

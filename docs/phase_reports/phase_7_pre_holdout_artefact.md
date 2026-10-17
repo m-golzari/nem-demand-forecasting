@@ -99,11 +99,18 @@ authorised**.
   - the feature-run identity and the input file hashes.
 
   It refuses on any mismatch.
+- **High-demand threshold (D-49, commit `add00d9`):** the evaluator uses the
+  frozen scalar 6,243.067666666667 MW from the protocol. It checks the scalar
+  against the pinned provenance record
+  `docs/benchmarks/final_evaluation_high_demand_threshold.json` (SHA-256
+  `b39b14a6…f42f586c`) and never recomputes it. No historical target row is
+  opened. The scalar, the record identity and the verification result are
+  written to the pre-execution and run manifests.
 - **Stage 1** reads only the projected keys and approved features for the
   window. It generates candidate and fallback predictions, writes them
   atomically, verifies an exact reload, then hashes and seals them.
-- **Stage 2** records target access in the ledger, then opens target and slice
-  columns, and computes the frozen metrics, slices and bootstrap.
+- **Stage 2** records target access in the ledger, then opens the target and
+  slice columns of the 2,208 window rows only, and computes the frozen metrics, slices and bootstrap.
 - **Instrumentation and safeguards:**
   - The run manifest records prediction rows, the maximum origin, the
     prediction-file hash, the seal and first target-access timestamps, the
@@ -121,7 +128,7 @@ authorised**.
 nem-forecast evaluate-holdout \
   --owner-approved-final-evaluation \
   --artefact-run-id final_artefact_20261017 \
-  --run-id phase7_final_holdout_20261017
+  --run-id phase7_final_holdout_20261017b
 ```
 
 Run it only after explicit owner approval, from the reviewed clean commit.
