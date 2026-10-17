@@ -335,7 +335,11 @@ def test_real_holdout_preflight_binds_frozen_artefact_without_reading_rows(
 
     Feature/target files are only hashed; ``FeatureSource.read`` (the sole row reader) is disabled.
     """
-    from nem_forecast.config import load_final_evaluation_protocol, load_lightgbm_protocol
+    from nem_forecast.config import (
+        load_backtest_config,
+        load_final_evaluation_protocol,
+        load_lightgbm_protocol,
+    )
     from nem_forecast.evaluation import backtest, holdout
     from nem_forecast.target.build import git_state
 
@@ -352,6 +356,7 @@ def test_real_holdout_preflight_binds_frozen_artefact_without_reading_rows(
     record = holdout.preflight(
         spec,
         protocol,
+        load_backtest_config(paths=paths),
         load_lightgbm_protocol(paths=paths).feature_allowlist.columns,
         paths.root,
         git_state(paths.root),
@@ -362,4 +367,6 @@ def test_real_holdout_preflight_binds_frozen_artefact_without_reading_rows(
     assert record["window"]["expected_origins"] == 92 and record["window"]["expected_rows"] == 2208
     assert record["evaluation_target_rows_loaded"] == 0
     assert record["model_producing_commit"].startswith("bfed6d7")
+    hd = record["high_demand_threshold"]
+    assert hd["threshold_mw"] == 6243.067666666667 and all(hd["verification"].values())
     assert not spec.output_dir.exists()

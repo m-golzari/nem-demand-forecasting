@@ -9,6 +9,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import shutil
+from collections.abc import Iterator
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -58,7 +59,10 @@ def fake_git(*args: str) -> str | None:
 
 
 @pytest.fixture(scope="module")
-def world(design: pd.DataFrame, tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:  # noqa: F811
+def world(
+    design: pd.DataFrame,  # noqa: F811
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Iterator[dict[str, Any]]:
     base = tmp_path_factory.mktemp("holdout")
     feats = base / "features"
     feats.mkdir()
@@ -143,14 +147,41 @@ def world(design: pd.DataFrame, tmp_path_factory: pytest.TempPathFactory) -> dic
         }
     )
     source = ho.FeatureSource(base, files, "synthetic", ("feature_manifest.json", manifest_sha))
-    return {"base": base, "art": art_dir, "protocol": protocol, "source": source, "design": design}
+    record = base / "threshold_record.json"
+    write_threshold_record(record, protocol)
+    with pytest.MonkeyPatch.context() as mp:  # pin the synthetic provenance record
+        mp.setattr(ho, "THRESHOLD_RECORD", str(record))
+        mp.setattr(ho, "THRESHOLD_RECORD_SHA256", sha256_file(record))
+        yield {
+            "base": base,
+            "art": art_dir,
+            "protocol": protocol,
+            "source": source,
+            "design": design,
+            "record": record,
+        }
+
+
+def write_threshold_record(path: Path, p: FinalEvaluationProtocol, **override: Any) -> None:
+    hd = p.slices.high_demand
+    record = {
+        "protocol_id": p.protocol_id,
+        "rule": hd.rule,
+        "quantile": 0.9,
+        "threshold_mw": hd.threshold_mw,
+        "training_rows": hd.training_rows,
+        "training_last_origin": hd.training_last_origin.isoformat(),
+        "feature_run_id": p.inputs.feature_run_id,
+        "feature_run_manifest_sha256": p.inputs.feature_run_manifest_sha256,
+        **override,
+    }
+    path.write_text(json.dumps(record, indent=2) + "\n")
 
 
 def make_spec(
     w: dict[str, Any], tmp: Path, run_id: str = "syn_final", **kw: Any
 ) -> ho.EvaluationSpec:
     p: FinalEvaluationProtocol = w["protocol"]
-    hd = p.slices.high_demand
     fields: dict[str, Any] = {
         "mode": "final_holdout",
         "run_id": run_id,
@@ -159,9 +190,6 @@ def make_spec(
         "ledger_path": tmp / "ledger.json",
         "window": p.holdout,
         "features": w["source"],
-        "threshold_training_last": hd.training_last_origin,
-        "frozen_threshold_mw": hd.threshold_mw,
-        "frozen_threshold_rows": hd.training_rows,
     }
     fields.update(kw)
     return ho.EvaluationSpec(**fields)
@@ -185,7 +213,7 @@ def run(w: dict[str, Any], spec: ho.EvaluationSpec, **kw: Any) -> dict[str, Any]
 def done(world: dict[str, Any], tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
     tmp = tmp_path_factory.mktemp("done")
     spec = make_spec(world, tmp)
-    pre = ho.preflight(spec, world["protocol"], ALLOW, REPO_ROOT, CODE, fake_git)
+    pre = ho.preflight(spec, world["protocol"], BCFG, ALLOW, REPO_ROOT, CODE, fake_git)
     write_json_atomic(tmp / "preflight.json", pre)
     return {"spec": spec, "manifest": run(world, spec), "tmp": tmp}
 
@@ -193,8 +221,26 @@ def done(world: dict[str, Any], tmp_path_factory: pytest.TempPathFactory) -> dic
 # --- protocol -------------------------------------------------------------------------
 
 
+REAL_THRESHOLD_RECORD = (
+    "docs/benchmarks/final_evaluation_high_demand_threshold.json",
+    "b39b14a640e86a0f631137fe2f774c64e6afa087b6e7ca0c6503fc14f42f586c",
+)
+
+
+def test_real_threshold_is_frozen_scalar_with_verified_provenance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(ho, "THRESHOLD_RECORD", REAL_THRESHOLD_RECORD[0])
+    monkeypatch.setattr(ho, "THRESHOLD_RECORD_SHA256", REAL_THRESHOLD_RECORD[1])
+    got = ho.verify_threshold(PROTOCOL, REPO_ROOT, BCFG.slices.high_demand_training_quantile)
+    assert got["threshold_mw"] == 6243.067666666667 == PROTOCOL.slices.high_demand.threshold_mw
+    assert all(got["verification"].values()) and got["historical_target_rows_opened"] == 0
+    assert PROTOCOL.slices.high_demand.training_rows == 39384
+
+
 def test_real_protocol_freezes_window_and_identities() -> None:
     p = PROTOCOL
+    assert p.rehearsal.expected_rows == 2208 and p.rehearsal.expected_origins == 92
     assert (p.holdout.first_origin, p.holdout.last_origin) == (
         dt.date(2026, 7, 1),
         dt.date(2026, 9, 30),
@@ -377,19 +423,24 @@ def test_targets_read_only_after_seal(
     world: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     spec = make_spec(world, tmp_path)
-    calls: list[tuple[list[str], bool]] = []
+    calls: list[tuple[list[str], bool, Any, Any]] = []
     original = ho.FeatureSource.read
 
     def spy(self: ho.FeatureSource, columns: Any, first: Any, last: Any) -> pd.DataFrame:
-        calls.append((list(columns), (spec.output_dir / "prediction_seal.json").exists()))
+        sealed = (spec.output_dir / "prediction_seal.json").exists()
+        calls.append((list(columns), sealed, first, last))
         return original(self, columns, first, last)
 
     monkeypatch.setattr(ho.FeatureSource, "read", spy)
-    run(world, spec)
-    first_cols, sealed_then = calls[0]
-    assert TARGET not in first_cols and not sealed_then
-    for cols, sealed in calls[1:]:
-        assert TARGET in cols and sealed  # every target read happens after the seal
+    m = run(world, spec)
+    w = world["protocol"].holdout
+    assert len(calls) == 2  # one feature read, one target read; no pre-window target read
+    (fcols, fsealed, _, _), (tcols, tsealed, tfirst, tlast) = calls
+    assert TARGET not in fcols and not fsealed
+    assert TARGET in tcols and tsealed and (tfirst, tlast) == (w.first_origin, w.last_origin)
+    inst = m["instrumentation"]
+    assert inst["target_rows_loaded"] == w.expected_rows
+    assert inst["pre_window_training_target_rows_loaded"] == 0
 
 
 def test_open_targets_requires_valid_seal(world: dict[str, Any], tmp_path: Path) -> None:
@@ -595,14 +646,90 @@ def test_failure_after_target_access_is_disclosed(
     assert third["pristine_first_evaluation"] is False
 
 
-def test_frozen_threshold_mismatch_fails_after_disclosure(
-    world: dict[str, Any], tmp_path: Path
+def test_threshold_is_the_frozen_scalar(world: dict[str, Any], done: dict[str, Any]) -> None:
+    frozen = world["protocol"].slices.high_demand.threshold_mw
+    out = done["spec"].output_dir
+    res = json.loads((out / "metrics.json").read_text())
+    assert (
+        res["high_demand"]["threshold_mw"] == frozen and res["high_demand"]["recomputed"] is False
+    )
+    assert res["high_demand"]["historical_target_rows_opened"] == 0
+    assert all(res["high_demand"]["verification"].values())
+    ev = pd.read_parquet(out / "evaluation_rows.parquet")
+    assert (ev["high_demand_threshold_mw"] == frozen).all()
+    assert (ev["is_high_demand"] == (ev["actual"] >= frozen)).all()
+    pre = json.loads((out / "pre_execution_manifest.json").read_text())
+    assert pre["high_demand_threshold"]["threshold_mw"] == frozen
+    assert pre["high_demand_threshold"]["provenance_record"]["sha256"] == ho.THRESHOLD_RECORD_SHA256
+    inst = done["manifest"]["instrumentation"]
+    assert inst["high_demand_threshold_mw"] == frozen and inst["high_demand_threshold_verified"]
+
+
+def test_pre_window_targets_cannot_change_threshold(
+    world: dict[str, Any], done: dict[str, Any], tmp_path: Path
 ) -> None:
-    spec = make_spec(world, tmp_path, frozen_threshold_mw=1.0)
-    with pytest.raises(ValueError, match="threshold"):
-        run(world, spec)
+    """Poisoned historical targets: identical threshold and high-demand classification."""
+    poisoned = world["design"].drop(columns=["origin_date"]).copy()
+    pre_window = poisoned["origin_market"].dt.date < H
+    poisoned.loc[pre_window, TARGET] = poisoned.loc[pre_window, TARGET] * 10 + 1e6
+    (tmp_path / "f").mkdir()
+    poisoned.to_parquet(tmp_path / "f" / "part.parquet", index=False)
+    src = ho.FeatureSource(
+        tmp_path, (("f/part.parquet", sha256_file(tmp_path / "f" / "part.parquet")),), "poisoned"
+    )
+    spec = make_spec(world, tmp_path, features=src)
+    assert run(world, spec)["instrumentation"]["pre_window_training_target_rows_loaded"] == 0
+    a = pd.read_parquet(done["spec"].output_dir / "evaluation_rows.parquet")
+    b = pd.read_parquet(spec.output_dir / "evaluation_rows.parquet")
+    pd.testing.assert_series_equal(a["is_high_demand"], b["is_high_demand"])
+    pd.testing.assert_series_equal(a["high_demand_threshold_mw"], b["high_demand_threshold_mw"])
+
+
+def test_altered_threshold_or_provenance_refused(
+    world: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    p: FinalEvaluationProtocol = world["protocol"]
+    hd = p.slices.high_demand
+    altered = p.model_copy(
+        update={
+            "slices": p.slices.model_copy(
+                update={
+                    "high_demand": hd.model_copy(update={"threshold_mw": hd.threshold_mw + 1e-6})
+                }
+            )
+        }
+    )
+    spec = make_spec(world, tmp_path, run_id="altered_value")
+    with pytest.raises(ho.EvaluationRefusedError, match="threshold_mw"):
+        run(world, spec, protocol=altered)
     f = json.loads((spec.output_dir / "failure_manifest.json").read_text())
-    assert f["targets_opened"] is True and f["metrics_calculated"] is False
+    assert f["predictions_generated"] is False and f["targets_opened"] is False
+    with pytest.raises(ho.EvaluationRefusedError, match="threshold"):
+        ho.preflight(
+            make_spec(world, tmp_path, run_id="pf"), altered, BCFG, ALLOW, REPO_ROOT, CODE, fake_git
+        )
+    # tampered record bytes (pinned hash no longer matches)
+    tampered = tmp_path / "tampered.json"
+    tampered.write_text(world["record"].read_text() + " ")
+    monkeypatch.setattr(ho, "THRESHOLD_RECORD", str(tampered))
+    with pytest.raises(ho.EvaluationRefusedError, match="record_sha256"):
+        run(world, make_spec(world, tmp_path, run_id="tampered"))
+    # a re-pinned record with another provenance identity
+    other = tmp_path / "other.json"
+    write_threshold_record(other, p, protocol_id="another-protocol")
+    monkeypatch.setattr(ho, "THRESHOLD_RECORD", str(other))
+    monkeypatch.setattr(ho, "THRESHOLD_RECORD_SHA256", sha256_file(other))
+    with pytest.raises(ho.EvaluationRefusedError, match="protocol_id"):
+        run(world, make_spec(world, tmp_path, run_id="other"))
+
+
+def test_preflight_reads_no_rows(world: dict[str, Any], tmp_path: Path) -> None:
+    spec = make_spec(world, tmp_path, run_id="pf_only")
+    disabled = replace(spec.features, reading_disabled=True)
+    with pytest.raises(ho.StageOrderError, match="disabled"):
+        disabled.read(["origin_utc"], H, LAST)
+    pre = ho.preflight(spec, world["protocol"], BCFG, ALLOW, REPO_ROOT, CODE, fake_git)
+    assert pre["evaluation_target_rows_loaded"] == 0 and not spec.output_dir.exists()
 
 
 # --- CLI ------------------------------------------------------------------------------

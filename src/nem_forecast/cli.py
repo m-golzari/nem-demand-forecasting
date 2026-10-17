@@ -649,6 +649,7 @@ def holdout_preflight_command(
         record = holdout.preflight(
             holdout.final_spec(paths.root, protocol, proposed_run_id),
             protocol,
+            load_backtest_config(paths=paths),
             load_lightgbm_protocol(paths=paths).feature_allowlist.columns,
             paths.root,
             target_build.git_state(paths.root),
@@ -656,6 +657,18 @@ def holdout_preflight_command(
         )
         out_dir.mkdir(parents=True)
         write_json_atomic(out_dir / "pre_execution_manifest.json", record)
+        write_json_atomic(
+            out_dir / "preflight_info.json",
+            {
+                "row_reading_disabled": True,
+                "feature_rows_decoded": 0,
+                "target_rows_decoded": 0,
+                "pre_execution_manifest_sha256": sha256_file(
+                    out_dir / "pre_execution_manifest.json"
+                ),
+                "code": target_build.git_state(paths.root),
+            },
+        )
     except (ConfigError, ProjectRootError, FileExistsError, ValueError, RuntimeError) as exc:
         raise _fail(exc) from exc
     typer.echo(

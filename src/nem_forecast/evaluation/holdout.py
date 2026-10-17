@@ -54,7 +54,10 @@ TARGET_COLUMNS = (TARGET, "target_available")
 QNAMES = ("p10", "p50", "p90")
 QUANTILE_OF = {"p10": 0.1, "p50": 0.5, "p90": 0.9}
 MODES = ("final_holdout", "rehearsal")
-THRESHOLD_TOLERANCE_MW = 1e-9
+# Frozen high-demand threshold provenance (D-49): the scalar in configs/final_evaluation.yaml
+# is verified against this record; no historical target row is read to derive or check it.
+THRESHOLD_RECORD = "docs/benchmarks/final_evaluation_high_demand_threshold.json"
+THRESHOLD_RECORD_SHA256 = "b39b14a640e86a0f631137fe2f774c64e6afa087b6e7ca0c6503fc14f42f586c"
 PROTOCOL_FILE = "configs/final_evaluation.yaml"
 FINAL_COMMAND = (
     "nem-forecast evaluate-holdout --owner-approved-final-evaluation "
@@ -109,6 +112,7 @@ class FeatureSource:
     files: tuple[tuple[str, str], ...]  # (path relative to root, sha256)
     label: str
     manifest: tuple[str, str] | None = None  # (feature-run manifest path, sha256)
+    reading_disabled: bool = False  # preflight: hashing only, no row may be decoded
 
     def verify(self) -> dict[str, Any]:
         bad = [rel for rel, sha in self.files if sha256_file(self.root / rel) != sha]
@@ -131,6 +135,8 @@ class FeatureSource:
         self, columns: Sequence[str] | None, first: dt.date | None, last: dt.date
     ) -> pd.DataFrame:
         """Rows with first <= origin market date <= last, projected to ``columns`` at read."""
+        if self.reading_disabled:
+            raise StageOrderError("row reading is disabled for this source (preflight)")
         filters: list[tuple[str, str, Any]] = [
             ("origin_utc", "<", market_midnight_utc(last + dt.timedelta(days=1)))
         ]
@@ -461,32 +467,45 @@ def open_targets(
     return source.read(cols, window.first_origin, window.last_origin)
 
 
-def high_demand_threshold(
-    log: StageLog,
-    source: FeatureSource,
-    training_last: dt.date,
-    window_first: dt.date,
-    quantile: float,
-    frozen_mw: float | None,
-    frozen_rows: int | None,
+def verify_threshold(
+    protocol: FinalEvaluationProtocol, repo_root: Path, quantile: float
 ) -> dict[str, Any]:
-    """Training-defined threshold: q of available targets with origin <= training_last."""
-    log.require_sealed()
-    if training_last >= window_first:
-        raise HoldoutAccessError("high-demand training rows must precede the evaluation window")
-    rows = source.read(["origin_utc", *TARGET_COLUMNS], None, training_last)
-    y = rows[TARGET].where(rows["target_available"]).dropna()
-    value = float(np.quantile(y, quantile))
-    if frozen_mw is not None and (
-        abs(value - frozen_mw) > THRESHOLD_TOLERANCE_MW or len(y) != frozen_rows
-    ):
-        raise ValueError(f"high-demand threshold {value} ({len(y)} rows) != frozen {frozen_mw}")
+    """The frozen scalar from the protocol, checked against its pinned provenance record.
+
+    No target row is opened: the threshold is never derived or verified numerically here.
+    """
+    hd = protocol.slices.high_demand
+    path = repo_root / THRESHOLD_RECORD
+    sha = sha256_file(path) if path.is_file() else None
+    rec = read_json(path) if sha == THRESHOLD_RECORD_SHA256 else {}
+    checks = {
+        "record_sha256": sha == THRESHOLD_RECORD_SHA256,
+        "threshold_mw": rec.get("threshold_mw") == hd.threshold_mw,
+        "training_rows": rec.get("training_rows") == hd.training_rows,
+        "training_last_origin": rec.get("training_last_origin")
+        == hd.training_last_origin.isoformat(),
+        "rule": rec.get("rule") == hd.rule,
+        "quantile": rec.get("quantile") == quantile,
+        "protocol_id": rec.get("protocol_id") == protocol.protocol_id,
+        "feature_run": rec.get("feature_run_id") == protocol.inputs.feature_run_id
+        and rec.get("feature_run_manifest_sha256") == protocol.inputs.feature_run_manifest_sha256,
+    }
+    failed = sorted(k for k, v in checks.items() if not v)
+    if failed:
+        raise EvaluationRefusedError(
+            f"high-demand threshold verification failed: {failed}; nothing was read"
+        )
     return {
-        "threshold_mw": value,
-        "training_rows": len(y),
-        "training_last_origin": training_last.isoformat(),
+        "threshold_mw": hd.threshold_mw,
+        "source": "configs/final_evaluation.yaml slices.high_demand.threshold_mw (frozen scalar)",
+        "provenance_record": {"path": THRESHOLD_RECORD, "sha256": sha},
+        "frozen_training_rows": hd.training_rows,
+        "frozen_training_last_origin": hd.training_last_origin.isoformat(),
         "quantile": quantile,
-        "frozen_threshold_mw": frozen_mw,
+        "verification": checks,
+        "verified": True,
+        "recomputed": False,
+        "historical_target_rows_opened": 0,
     }
 
 
@@ -735,9 +754,6 @@ class EvaluationSpec:
     ledger_path: Path
     window: EvaluationWindowSpec
     features: FeatureSource
-    threshold_training_last: dt.date
-    frozen_threshold_mw: float | None
-    frozen_threshold_rows: int | None
     acknowledge_prior_target_access: bool = False
 
 
@@ -750,6 +766,7 @@ def pre_execution_record(
     code: dict[str, Any],
     repo_root: Path,
     ledger_attempts: int,
+    threshold: dict[str, Any],
 ) -> dict[str, Any]:
     """Deterministic (timestamp-free) record of everything verified before prediction."""
     return {
@@ -772,11 +789,7 @@ def pre_execution_record(
         },
         "prediction_stage_columns": columns,
         "forbidden_in_prediction": list(protocol.stages.forbidden_in_prediction),
-        "high_demand": {
-            "training_last_origin": spec.threshold_training_last.isoformat(),
-            "frozen_threshold_mw": spec.frozen_threshold_mw,
-            "frozen_training_rows": spec.frozen_threshold_rows,
-        },
+        "high_demand_threshold": threshold,
         "bootstrap": protocol.bootstrap.model_dump(),
         "ledger_prior_attempts": ledger_attempts,
         "evaluation_feature_rows_loaded": 0,
@@ -796,10 +809,6 @@ def _check_spec(
         raise EvaluationRefusedError("final evaluation must use the frozen holdout window")
     if spec.mode == "rehearsal" and spec.window.last_origin >= protocol.holdout.first_origin:
         raise HoldoutAccessError("rehearsal origins must precede the holdout; nothing was read")
-    if spec.threshold_training_last != spec.window.first_origin - dt.timedelta(days=2):
-        raise EvaluationRefusedError(
-            "high-demand training rows must end at the last matured origin"
-        )
     if clean and code.get("dirty") is not False:
         raise EvaluationRefusedError(
             f"a clean, committed git tree is required: {code}; nothing was read"
@@ -809,23 +818,34 @@ def _check_spec(
 def preflight(
     spec: EvaluationSpec,
     protocol: FinalEvaluationProtocol,
+    bcfg: BacktestConfig,
     allowlist: Sequence[str],
     repo_root: Path,
     code: dict[str, Any],
     git: GitFn,
     require_clean: bool = True,
 ) -> dict[str, Any]:
-    """All binding checks with no feature or target row decoded."""
+    """All binding checks with row reading disabled (files are hashed, never decoded)."""
     _check_spec(spec, protocol, code, require_clean)
+    spec = replace(spec, features=replace(spec.features, reading_disabled=True))
     if spec.output_dir.exists():
         raise FileExistsError(f"{spec.output_dir} exists; run IDs are never reused")
     ledger = Ledger(spec.ledger_path, protocol.protocol_id, protocol.artefact.run_id, spec.mode)
     ledger.check_start(spec.run_id, spec.acknowledge_prior_target_access)
     identities = verify_artefact(spec.artefact_dir, protocol, allowlist, repo_root, git)
+    threshold = verify_threshold(protocol, repo_root, bcfg.slices.high_demand_training_quantile)
     inputs = spec.features.verify()
     columns = prediction_columns(protocol, allowlist)
     return pre_execution_record(
-        spec, protocol, identities, inputs, columns, code, repo_root, len(ledger.data["attempts"])
+        spec,
+        protocol,
+        identities,
+        inputs,
+        columns,
+        code,
+        repo_root,
+        len(ledger.data["attempts"]),
+        threshold,
     )
 
 
@@ -851,6 +871,7 @@ def run_evaluation(
     ledger.update(spec.run_id, started_utc=started, status="started", **log.flags())
     try:
         identities = verify_artefact(spec.artefact_dir, protocol, allowlist, repo_root, git)
+        threshold = verify_threshold(protocol, repo_root, bcfg.slices.high_demand_training_quantile)
         inputs_verified = spec.features.verify()
         columns = prediction_columns(protocol, allowlist)
         pre = pre_execution_record(
@@ -862,6 +883,7 @@ def run_evaluation(
             code,
             repo_root,
             len(ledger.data["attempts"]) - 1,
+            threshold,
         )
         write_json_atomic(spec.output_dir / "pre_execution_manifest.json", pre)
         pre_sha = sha256_file(spec.output_dir / "pre_execution_manifest.json")
@@ -887,15 +909,6 @@ def run_evaluation(
             ledger.update(spec.run_id, targets_opened=True, targets_first_opened_utc=opened)
 
         targets = open_targets(log, spec.features, spec.window, record_open)
-        threshold = high_demand_threshold(
-            log,
-            spec.features,
-            spec.threshold_training_last,
-            spec.window.first_origin,
-            bcfg.slices.high_demand_training_quantile,
-            spec.frozen_threshold_mw,
-            spec.frozen_threshold_rows,
-        )
         ev, results = evaluate(
             preds, targets, threshold["threshold_mw"], bcfg, protocol, spec.window
         )
@@ -941,7 +954,10 @@ def run_evaluation(
                 "predictions_sealed_utc": seal["predictions_sealed_utc"],
                 "targets_first_opened_utc": log.targets_first_opened_utc,
                 "target_rows_loaded": rec["target_rows_loaded"],
-                "pre_window_training_target_rows_loaded": threshold["training_rows"],
+                "pre_window_training_target_rows_loaded": 0,
+                "high_demand_threshold_mw": threshold["threshold_mw"],
+                "high_demand_threshold_record_sha256": threshold["provenance_record"]["sha256"],
+                "high_demand_threshold_verified": threshold["verified"],
                 "identical_row_reconciliation": rec,
                 "holdout_evaluation_executed": spec.mode == "final_holdout",
                 "holdout_target_rows_loaded": (
@@ -1011,9 +1027,6 @@ def final_spec(
                 inp.feature_run_manifest_sha256,
             ),
         ),
-        threshold_training_last=protocol.slices.high_demand.training_last_origin,
-        frozen_threshold_mw=protocol.slices.high_demand.threshold_mw,
-        frozen_threshold_rows=protocol.slices.high_demand.training_rows,
         acknowledge_prior_target_access=acknowledge,
     )
 
@@ -1078,12 +1091,14 @@ def run_rehearsal(
         ledger_path=sandbox / "ledger.json",
         window=window,
         features=source,
-        threshold_training_last=window.first_origin - dt.timedelta(days=2),
-        frozen_threshold_mw=None,
-        frozen_threshold_rows=None,
     )
-    pre = preflight(spec, protocol, allowlist, root, code, git, require_clean)
+    pre = preflight(spec, protocol, bcfg, allowlist, root, code, git, require_clean)
     manifest = run_evaluation(spec, protocol, bcfg, allowlist, root, code, git, require_clean)
+    inst = manifest["instrumentation"]
+    if inst["target_rows_loaded"] != window.expected_rows or (
+        inst["pre_window_training_target_rows_loaded"] != 0
+    ):
+        raise RowContractError("rehearsal opened target rows outside the evaluation window")
     refusals: dict[str, str] = {}
     for label, attempt in (
         (

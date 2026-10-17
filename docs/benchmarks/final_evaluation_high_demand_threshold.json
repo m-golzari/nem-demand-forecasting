@@ -1,0 +1,17 @@
+{
+  "record": "final-evaluation high-demand threshold (frozen scalar)",
+  "protocol_id": "final-holdout-evaluation-v1",
+  "protocol_freeze_commit": "dec57939e29f38bb7d62d1537549f4f06a2716da",
+  "rule": "training_quantile",
+  "quantile": 0.9,
+  "quantile_interpolation": "linear",
+  "threshold_mw": 6243.067666666667,
+  "training_rows": 39384,
+  "training_first_origin": "2022-01-01",
+  "training_last_origin": "2026-06-29",
+  "rows": "available targets (target_available) of primary_operational design rows with origin <= training_last_origin",
+  "feature_run_id": "phase3_features_20261016_clean",
+  "feature_run_manifest_sha256": "e407910b719fea439d14578f4062ef89277ff80758895c342d6c3f2cedb6322b",
+  "computed": "2026-10-17, before the evaluator was written, with the holdout excluded at the Parquet read (holdout rows loaded 0)",
+  "use": "The evaluator reads this scalar from configs/final_evaluation.yaml, verifies it against this record and never recomputes it"
+}
